@@ -7,7 +7,6 @@ from ..dataset import Dataset, DataModule
 from imblearn.over_sampling import RandomOverSampler
 import numpy as np
 
-
 class Brset(Dataset):
     """Brset dataset."""
 
