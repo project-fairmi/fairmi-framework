@@ -3,74 +3,66 @@ import pandas as pd
 import random
 from PIL import Image
 from ..dataset import Dataset, DataModule
-import numpy as np
 
 class Odir(Dataset):
-    """ODIR dataset."""
+    """ODIR dataset.
+
+    Attributes:
+        image_data_dir (str): Path to the directory containing image data.
+        transform (bool): Whether to apply transformations to the images.
+        data_dir (str): Path to the directory containing the dataset.
+        labels (pd.DataFrame): DataFrame containing the metadata and labels.
+    """
 
     def __init__(self, data_dir: str, image_data_dir: str, type: str,
-                  transform: bool = False, fraction: float = 1, task: str = 'D', num_groups: int = 4):
-        """ODIR dataset constructor.
+                  transform: bool = False, fraction: float = 1, task: str = 'D', 
+                  num_groups: int = 4, patient_id_column: str = 'ID', 
+                  age_column: str = 'Patient Age', gender_column: str = 'Patient Sex'):
+        """Initializes the Odir dataset.
 
         Args:
-            data_dir (str): path to the dataset
-            type (str): type of the dataset (train, val, test)
+            data_dir (str): Path to the dataset.
+            image_data_dir (str): Path to the directory containing image data.
+            type (str): Type of the dataset (train, val, test).
             transform (bool): Optional transform to be applied on a sample.
-            fraction (float): Fraction of the dataset to use
+            fraction (float): Fraction of the dataset to use.
+            task (str): Task to perform.
+            num_groups (int): Number of groups for stratification.
+            patient_id_column (str): Name of the column containing patient IDs.
+            age_column (str): Name of the column containing patient ages.
+            gender_column (str): Name of the column containing patient gender.
         """
-        super().__init__(data_dir, image_data_dir, type, transform, fraction)
+        super().__init__(data_dir, image_data_dir, type, transform, fraction, age_column, gender_column, num_groups, task, patient_id_column)
         random.seed(42)
         self.image_data_dir = image_data_dir
-        self.type = type
         self.transform = transform
         self.data_dir = data_dir
-        self.fraction = fraction
-        self.task = task
-        self.num_groups = num_groups
+
+        self.labels = pd.read_csv(f"{self.data_dir}/full_df.csv")
 
         self.configure_dataset()
-
-    def configure_dataset(self):
-        """Configure the dataset.
-        """
-        random_seed = 42
-        np.random.seed(random_seed)
-        self.labels = pd.read_csv(f"{self.data_dir}/full_df.csv")
-        self.labels['age_group'] = self.create_age_groups(self.labels['Patient Age'], num_groups=self.num_groups)
-        self.labels['Patient Sex'] = self.convert_gender_to_binary(self.labels['Patient Sex'])
-
-        self.labels['labels'] = self.labels['labels'].apply(lambda x: 1 if x == f"['{self.task}']" else 0)
-
-        patients = self.labels["ID"].unique()
-        random.shuffle(patients)
-        
-        train_size = int(0.6 * len(patients))
-        validation_size = int(0.1 * len(patients))
-        
-        train_numbers = patients[:train_size]
-        remaining_numbers = patients[train_size:]
-
-        validation_numbers = remaining_numbers[:validation_size]
-        test_numbers = remaining_numbers[validation_size:]
-
-        if self.type == 'train':    
-            self.labels = self.labels[self.labels['ID'].isin(train_numbers)].reset_index()
-            self.labels = self.labels.sample(frac=self.fraction).reset_index(drop=True)
-        elif self.type == 'val':
-            self.labels = self.labels[self.labels['ID'].isin(validation_numbers)].reset_index()
-        elif self.type == 'test' or self.type == 'eval':
-            self.labels = self.labels[self.labels['ID'].isin(test_numbers)].reset_index()
-        else:
-            raise ValueError(f'Invalid type: {self.type} (must be train, val or test/eval)')
+        self.split()
 
     def __len__(self) -> int:
-        """Return the length of the dataset."""
+        """Returns the length of the dataset.
+
+        Returns:
+            int: The number of items in the dataset.
+        """
         return len(self.labels)
 
     def __getitem__(self, idx: int):
-        """Return the item at index idx.
+        """Returns a single item from the dataset at the given index.
+
         Args:
-            idx (int): index of the item to be returned
+            idx (int): Index of the item to be returned.
+
+        Returns:
+            dict: A dictionary containing:
+                - image (PIL.Image): The image at the specified index.
+                - label (torch.Tensor): The label associated with the image.
+                - gender (str): The gender of the patient.
+                - age_group (str): The age group of the patient.
         """
         image_path = f"{self.image_data_dir}/{self.labels.loc[idx, 'filename']}"
         image = Image.open(image_path).convert("RGB")
@@ -83,10 +75,15 @@ class Odir(Dataset):
         
         label = self.labels.loc[idx, 'labels']
         label = torch.tensor([label]).float()
-        gender = self.labels.loc[idx, 'Patient Sex']
-        age_group = self.labels.loc[idx, 'age_group']
+        gender = self.labels.loc[idx, 'gender_group']
+        age = self.labels.loc[idx, 'age_group']
         
-        return image, label, gender, age_group
+        return {
+            'image': image,
+            'label': label,
+            'gender': gender,
+            'age': age
+        }
 
 def OdirModule(data_dir: str, 
                image_data_dir: str, 
@@ -95,14 +92,28 @@ def OdirModule(data_dir: str,
                batch_size: int = 32, 
                fraction: float = 1, 
                num_workers: int = 4,
-               num_groups: int = 4):
-    
+               num_groups: int = 4) -> DataModule:
+    """Creates a DataModule for the Odir dataset.
+
+    Args:
+        data_dir (str): Path to the dataset.
+        image_data_dir (str): Path to the directory containing image data.
+        transform (bool): Whether to apply transformations to the images.
+        task (str): Task to perform.
+        batch_size (int): Batch size for data loading.
+        fraction (float): Fraction of the dataset to use.
+        num_workers (int): Number of workers for data loading.
+        num_groups (int): Number of groups for stratification.
+
+    Returns:
+        DataModule: A DataModule instance configured for the Odir dataset.
+    """
     return DataModule(dataset=Odir, 
-                             data_dir=data_dir, 
-                             image_data_dir=image_data_dir, 
-                             transform=transform, 
-                             batch_size=batch_size, 
-                             fraction=fraction, 
-                             num_workers=num_workers, 
-                             task=task,
-                             num_groups=num_groups)
+                      data_dir=data_dir, 
+                      image_data_dir=image_data_dir, 
+                      transform=transform, 
+                      batch_size=batch_size, 
+                      fraction=fraction, 
+                      num_workers=num_workers, 
+                      task=task,
+                      num_groups=num_groups)
