@@ -5,25 +5,32 @@ from PIL import Image
 from ..dataset import Dataset, DataModule
 
 class Brset(Dataset):
-    """Brset dataset."""
+    """Brset dataset.
+
+    Attributes:
+        image_data_dir (str): Path to the directory containing image data.
+        transform (bool): Whether to apply transformations to the images.
+        data_dir (str): Path to the directory containing the dataset.
+        labels (pd.DataFrame): DataFrame containing the metadata and labels.
+    """
 
     def __init__(self, data_dir: str, image_data_dir: str, type: str,
                 transform: bool = False, fraction: float = 1, task: str = 'diabetic_retinopathy', 
                 num_groups: int = 4, patient_id_column: str = 'patient_id', 
                 age_column: str = 'patient_age', gender_column: str = 'patient_sex'):
-        """Brset dataset constructor.
+        """Initializes the Brset dataset.
 
         Args:
-            data_dir (str): path to the dataset
-            image_data_dir (str): path to the directory containing image data
-            type (str): type of the dataset (train, val, test)
+            data_dir (str): Path to the dataset.
+            image_data_dir (str): Path to the directory containing image data.
+            type (str): Type of the dataset (train, val, test).
             transform (bool): Optional transform to be applied on a sample.
-            fraction (float): Fraction of the dataset to use
-            task (str): Task to perform
-            num_groups (int): Number of groups for stratification
-            patient_id_column (str): Name of the column containing patient IDs
-            age_column (str): Name of the column containing patient ages
-            gender_column (str): Name of the column containing patient gender
+            fraction (float): Fraction of the dataset to use.
+            task (str): Task to perform.
+            num_groups (int): Number of groups for stratification.
+            patient_id_column (str): Name of the column containing patient IDs.
+            age_column (str): Name of the column containing patient ages.
+            gender_column (str): Name of the column containing patient gender.
         """
         super().__init__(data_dir, image_data_dir, type, transform, fraction, age_column, gender_column, num_groups, task, patient_id_column)
         random.seed(42)
@@ -37,7 +44,7 @@ class Brset(Dataset):
         self.split()
 
     def configure_dataset(self):
-        """Configure the dataset."""
+        """Configures the dataset by balancing positive and negative cases."""
         super().configure_dataset()
 
         positive_cases = self.labels[self.labels[self.task] == 1]
@@ -63,15 +70,14 @@ class Brset(Dataset):
             idx (int): Index of the item to be returned.
 
         Returns:
-            Tuple: A tuple containing:
+            dict: A dictionary containing:
                 - image (PIL.Image): The image at the specified index.
                 - label (torch.Tensor): The label associated with the image.
                 - gender (str): The gender of the patient.
                 - age_group (str): The age group of the patient.
         """
-        # image_path = f"{self.image_data_dir}/{self.labels.loc[idx, 'image_id']}.jpg"
-        # image = Image.open(image_path).convert("RGB")
-        image = Image.new('RGB', (224, 224))
+        image_path = f"{self.image_data_dir}/{self.labels.loc[idx, 'image_id']}.jpg"
+        image = Image.open(image_path).convert("RGB")
 
         if self.transform:
             compose = self.transforms()
@@ -93,5 +99,20 @@ class Brset(Dataset):
 
 def BrsetModule(data_dir: str, image_data_dir: str, transform: bool, task: str, batch_size: int = 32,
                 fraction: float = 1, num_workers: int  = 11, num_groups: int = 4):
+    """Creates a DataModule for the Brset dataset.
+
+    Args:
+        data_dir (str): Path to the dataset.
+        image_data_dir (str): Path to the directory containing image data.
+        transform (bool): Whether to apply transformations to the images.
+        task (str): Task to perform.
+        batch_size (int): Batch size for data loading.
+        fraction (float): Fraction of the dataset to use.
+        num_workers (int): Number of workers for data loading.
+        num_groups (int): Number of groups for stratification.
+
+    Returns:
+        DataModule: A DataModule instance configured for the Brset dataset.
+    """
     return DataModule(dataset=Brset, data_dir=data_dir, image_data_dir=image_data_dir, transform=transform,
                             batch_size=batch_size, fraction=fraction, num_workers=num_workers, task=task, num_groups=num_groups)

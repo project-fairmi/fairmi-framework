@@ -187,6 +187,19 @@ class DataModule(pl.LightningDataModule):
 
     def __init__(self, dataset: Type[Dataset], data_dir: str, image_data_dir: str, task: str, transform: bool,
                  batch_size: int = 32, fraction: float = 1, num_workers: int  = 11, num_groups: int = 4):
+        """Initializes the data module.
+
+        Args:
+            dataset (Type[Dataset]): The dataset class to use.
+            data_dir (str): Path to the dataset.
+            image_data_dir (str): Path to the directory containing image data.
+            task (str): Task to perform.
+            transform (bool): Whether to apply transformations to the data.
+            batch_size (int): Batch size for data loading.
+            fraction (float): Fraction of the dataset to use.
+            num_workers (int): Number of workers for data loading.
+            num_groups (int): Number of groups for stratification.
+        """
         super().__init__()
         self.dataset = dataset
         self.data_dir = data_dir
