@@ -14,16 +14,18 @@ class Odir(Dataset):
         labels (pd.DataFrame): DataFrame containing the metadata and labels.
     """
 
-    def __init__(self, data_dir: str, image_data_dir: str, type: str,
-                  transform: bool = False, fraction: float = 1, task: str = 'D', 
-                  num_groups: int = 4, patient_id_column: str = 'ID', 
-                  age_column: str = 'Patient Age', gender_column: str = 'Patient Sex'):
+    def __init__(self, data_dir: str, image_data_dir: str, type: str, labels_file: str = 'full_df.csv',
+                 image_column: str = 'filename', transform: bool = False, fraction: float = 1, task: str = 'D', 
+                 num_groups: int = 4, patient_id_column: str = 'ID', 
+                 age_column: str = 'Patient Age', gender_column: str = 'Patient Sex'):
         """Initializes the Odir dataset.
 
         Args:
             data_dir (str): Path to the dataset.
             image_data_dir (str): Path to the directory containing image data.
             type (str): Type of the dataset (train, val, test).
+            labels_file (str): Name of the file containing the labels.
+            image_column (str): Name of the column containing image IDs.
             transform (bool): Optional transform to be applied on a sample.
             fraction (float): Fraction of the dataset to use.
             task (str): Task to perform.
@@ -32,58 +34,11 @@ class Odir(Dataset):
             age_column (str): Name of the column containing patient ages.
             gender_column (str): Name of the column containing patient gender.
         """
-        super().__init__(data_dir, image_data_dir, type, transform, fraction, age_column, gender_column, num_groups, task, patient_id_column)
+        super().__init__(data_dir, image_data_dir, labels_file, image_column, type, transform, fraction, age_column, gender_column, num_groups, task, patient_id_column)
         random.seed(42)
-        self.image_data_dir = image_data_dir
-        self.transform = transform
-        self.data_dir = data_dir
-
-        self.labels = pd.read_csv(f"{self.data_dir}/full_df.csv")
 
         self.configure_dataset()
         self.split()
-
-    def __len__(self) -> int:
-        """Returns the length of the dataset.
-
-        Returns:
-            int: The number of items in the dataset.
-        """
-        return len(self.labels)
-
-    def __getitem__(self, idx: int):
-        """Returns a single item from the dataset at the given index.
-
-        Args:
-            idx (int): Index of the item to be returned.
-
-        Returns:
-            dict: A dictionary containing:
-                - image (PIL.Image): The image at the specified index.
-                - label (torch.Tensor): The label associated with the image.
-                - gender (str): The gender of the patient.
-                - age_group (str): The age group of the patient.
-        """
-        image_path = f"{self.image_data_dir}/{self.labels.loc[idx, 'filename']}"
-        image = Image.open(image_path).convert("RGB")
-        
-        if self.transform:
-            compose = self.transforms()
-            image = compose(image)
-        else:
-            image = self.initial_transform(image)
-        
-        label = self.labels.loc[idx, 'labels']
-        label = torch.tensor([label]).float()
-        gender = self.labels.loc[idx, 'gender_group']
-        age = self.labels.loc[idx, 'age_group']
-        
-        return {
-            'image': image,
-            'label': label,
-            'gender': gender,
-            'age': age
-        }
 
 def OdirModule(data_dir: str, 
                image_data_dir: str, 

@@ -1,7 +1,7 @@
-from typing import Type
+from typing import List, Type, Optional, Dict, Any
 import lightning as pl
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset as TorchDataset
 from torchvision.transforms import v2 as transforms
 import random
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
@@ -9,44 +9,22 @@ import pandas as pd
 import re
 import numpy as np
 from torch.utils.data import default_collate
+from PIL import Image
 
-class Dataset(torch.utils.data.Dataset):
-    """Base dataset for loading and processing data for machine learning tasks.
+RANDOM_SEED = 42
+TRAIN_SPLIT = 0.6
+VAL_SPLIT = 0.1
+TEST_SPLIT = 0.3
 
-    This dataset handles preprocessing of data including transformations, splitting data into 
-    training, validation, and test sets, and converting categorical data (e.g., gender) to numeric values.
+class Dataset(TorchDataset):
+    """Base dataset for loading and processing data for machine learning tasks."""
 
-    Attributes:
-        image_data_dir (str): Path to the directory containing image data.
-        type (str): Type of the dataset (train, val, test).
-        transform (bool): Whether to apply transformations to the images.
-        data_dir (str): Path to the directory containing the dataset.
-        fraction (float): Fraction of the dataset to use.
-        age_column (str): Name of the column containing the age information.
-        gender_column (str): Name of the column containing gender information.
-        num_groups (int): Number of age groups for stratification.
-        task (str): Task to perform (e.g., 'Pneumonia' for classification).
-        patient_id_column (str): Name of the column containing patient IDs.
-    """
-
-    def __init__(self, data_dir: str, image_data_dir: str, type: str, transform: bool = False,
-                 fraction: float = 1, age_column: str = None, gender_column: str = None, num_groups: int = 4,
-                 task: str = None, patient_id_column: str = None):
-        """Initializes the dataset.
-
-        Args:
-            data_dir (str): Path to the dataset.
-            image_data_dir (str): Path to the directory containing image data.
-            type (str): Type of dataset (train, val, test).
-            transform (bool): Whether to apply transformations to the images.
-            fraction (float): Fraction of the dataset to use.
-            age_column (str): Name of the column containing the age information.
-            gender_column (str): Name of the column containing gender information.
-            num_groups (int): Number of age groups for stratification.
-            task (str): Task to perform (e.g., 'Pneumonia').
-            patient_id_column (str): Name of the column containing patient IDs.
-        """
-        random.seed(42)
+    def __init__(self, data_dir: str, image_data_dir: str, labels_file: str, image_column: str, type: str, 
+                 transform: bool = False, fraction: float = 1, age_column: Optional[str] = None, 
+                 gender_column: Optional[str] = None, num_groups: int = 4, task: Optional[str] = None, 
+                 patient_id_column: Optional[str] = None):
+        """Initializes the dataset."""
+        random.seed(RANDOM_SEED)
         self.image_data_dir = image_data_dir
         self.type = type
         self.transform = transform
@@ -57,8 +35,21 @@ class Dataset(torch.utils.data.Dataset):
         self.num_groups = num_groups
         self.task = task
         self.patient_id_column = patient_id_column
+        self.image_column = image_column
+        
+        self.labels = self._set_labels(labels_file)
+        self.initial_transform = self._get_initial_transform()
 
-        self.initial_transform = transforms.Compose([
+    def _set_labels(self, labels_file: str) -> pd.DataFrame:
+        """Sets the labels for the dataset."""
+        if labels_file.endswith('.csv'):
+            return pd.read_csv(f"{self.data_dir}/{labels_file}")
+        else:
+            raise ValueError(f'Invalid file format: {labels_file} (must be .csv)')
+
+    def _get_initial_transform(self) -> transforms.Compose:
+        """Returns the initial transformation pipeline for the dataset."""
+        return transforms.Compose([
             transforms.ToImage(),  
             transforms.ToDtype(torch.float32, scale=True),
             transforms.Resize((224, 224)),
@@ -66,140 +57,113 @@ class Dataset(torch.utils.data.Dataset):
         ])
 
     def configure_dataset(self):
-        """Configures the dataset by creating age and gender groups, and preparing labels based on the task.
-
-        This method will process the gender and age data columns, creating new columns for age groups
-        and binary gender values, and it will adjust the labels according to the task specified (e.g., classification).
-        """
-        if self.age_column is not None:
+        """Configures the dataset by creating age and gender groups, and preparing labels based on the task."""
+        if self.age_column:
             self.labels = self.labels.dropna(subset=[self.age_column])
-            self.labels['age_group'] = self.create_age_groups(self.labels[self.age_column], num_groups=self.num_groups)
+            self.labels['age_group'] = self._create_age_groups(self.labels[self.age_column])
+        else:
+            self.labels['age_group'] = np.nan
         
-        if self.gender_column is not None:
+        if self.gender_column:
             self.labels = self.labels.dropna(subset=[self.gender_column])
-            self.labels['gender_group'] = self.convert_gender_to_binary(self.labels[self.gender_column])
+            self.labels['gender_group'] = self._convert_gender_to_binary(self.labels[self.gender_column])
+        else:
+            self.labels['gender_group'] = np.nan
         
-        if self.task is not None:
+        if 'group' not in self.labels.columns:
+            self.labels['group'] = np.nan
+
+        if self.task:
             self.labels[self.task] = self.labels[self.task].fillna(0)
             self.labels['labels'] = self.labels[self.task]
 
     def split(self):
-        """Splits the dataset into training, validation, and test sets based on patient IDs.
+        """Splits the dataset into training, validation, and test sets based on patient IDs."""
+        np.random.seed(RANDOM_SEED)
 
-        This method will shuffle the patient IDs and split them into training (60%), validation (10%), 
-        and test (30%) sets based on the 'type' of dataset requested (train, val, test/eval).
-        """
-        random_seed = 42
-        np.random.seed(random_seed)
+        patients = self.labels[self.patient_id_column].unique()
+        np.random.shuffle(patients)
 
-        self.patients = self.labels[self.patient_id_column].unique()
-        random.shuffle(self.patients)
-
-        train_size = int(0.6 * len(self.patients))
-        validation_size = int(0.1 * len(self.patients))
+        train_size = int(TRAIN_SPLIT * len(patients))
+        validation_size = int(VAL_SPLIT * len(patients))
         
-        train_numbers = self.patients[:train_size]
-        remaining_numbers = self.patients[train_size:]
+        train_patients = patients[:train_size]
+        remaining_patients = patients[train_size:]
 
-        validation_numbers = remaining_numbers[:validation_size]
-        test_numbers = remaining_numbers[validation_size:]
+        validation_patients = remaining_patients[:validation_size]
+        test_patients = remaining_patients[validation_size:]
 
         if self.type == 'train':    
-            self.labels = self.labels[self.labels[self.patient_id_column].isin(train_numbers)].reset_index()
+            self.labels = self.labels[self.labels[self.patient_id_column].isin(train_patients)].reset_index(drop=True)
             self.labels = self.labels.sample(frac=self.fraction).reset_index(drop=True)
         elif self.type == 'val':
-            self.labels = self.labels[self.labels[self.patient_id_column].isin(validation_numbers)].reset_index()
-        elif self.type == 'test' or self.type == 'eval':
-            self.labels = self.labels[self.labels[self.patient_id_column].isin(test_numbers)].reset_index()
+            self.labels = self.labels[self.labels[self.patient_id_column].isin(validation_patients)].reset_index(drop=True)
+        elif self.type in ['test', 'eval']:
+            self.labels = self.labels[self.labels[self.patient_id_column].isin(test_patients)].reset_index(drop=True)
         else:
             raise ValueError(f'Invalid type: {self.type} (must be train, val or test/eval)')
 
-    def transforms(self):
-        """Returns the transformation pipeline for the dataset.
-
-        Returns:
-            transforms.Compose: A composed transformation function.
-        """
+    def transforms(self) -> transforms.Compose:
+        """Returns the transformation pipeline for the dataset."""
         return transforms.Compose([
             self.initial_transform,
             transforms.RandAugment(num_ops=4)
         ])
 
-    def convert_gender_to_binary(self, column: pd.Series) -> pd.Series:
-        """Converts gender values to binary format (0 for female, 1 for male).
-
-        Args:
-            column (pd.Series): A pandas Series containing gender values.
-
-        Returns:
-            pd.Series: A pandas Series with binary gender values (0 for female, 1 for male).
-        """
+    def _convert_gender_to_binary(self, column: pd.Series) -> pd.Series:
+        """Converts gender values to binary format (0 for female, 1 for male)."""
         female_pattern = re.compile(r'^(f|feminine|female|woman|girl)$', re.IGNORECASE)
         male_pattern = re.compile(r'^(m|masculine|male|man|boy)$', re.IGNORECASE)
 
         return column.apply(lambda x: 0 if bool(female_pattern.search(str(x))) else (1 if bool(male_pattern.search(str(x))) else x))
     
-    def create_age_groups(self, column: pd.Series, num_groups: int = 4) -> pd.Series:
-        """Creates age groups from the specified column.
-
-        Args:
-            column (pd.Series): A pandas Series containing patient ages.
-            num_groups (int): Number of age groups to create. Default is 4.
-
-        Returns:
-            pd.Series: A pandas Series containing the age groups.
-        """
+    def _create_age_groups(self, column: pd.Series) -> pd.Series:
+        """Creates age groups from the specified column."""
         column = pd.to_numeric(column, errors='coerce')
         column.dropna(inplace=True)
         
-        bin_edges = [0] + [100 / num_groups * i for i in range(1, num_groups + 1)]
+        bin_edges = [0] + [100 / self.num_groups * i for i in range(1, self.num_groups + 1)]
+        labels = list(range(self.num_groups))
         
-        labels = list(range(num_groups))
-        
-        age_group = pd.cut(column, bins=bin_edges, labels=labels)
-        
-        return age_group
+        return pd.cut(column, bins=bin_edges, labels=labels)
+    
+    def set_group(self, labels: List[int]):
+        """Sets the group column in the dataset."""
+        self.labels['group'] = labels
+    
+    def __len__(self) -> int:
+        """Returns the length of the dataset."""
+        return len(self.labels)
 
-    def create_groups(self):
-        """Creates groups using hierarchical clustering or k-means on the dataset features.
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        """Returns a single item from the dataset at the given index."""
+        image_path = f"{self.image_data_dir}/{self.labels.loc[idx, self.image_column]}.jpg"
+        image = Image.open(image_path).convert("RGB")
+
+        if self.transform:
+            image = self.transforms()(image)
+        else:
+            image = self.initial_transform(image)
         
-        TODO: Implement hierarchical clustering or k-means to generate groups based on dataset features.
-        """
-        pass
+        label = torch.tensor([self.labels.loc[idx, 'labels']]).float()
+        gender = self.labels.loc[idx, 'gender_group']
+        age = self.labels.loc[idx, 'age_group']
+        group = self.labels.loc[idx, 'group']
         
+        return {
+            'image': image,
+            'label': label,
+            'gender': gender,
+            'age': age,
+            'group': group
+        }
+
 class DataModule(pl.LightningDataModule):
-    """Data module for handling dataset operations in a PyTorch Lightning pipeline.
+    """Data module for handling dataset operations in a PyTorch Lightning pipeline."""
 
-    This class sets up the dataset, splits it into training, validation, and test sets, and provides
-    data loaders for each set.
-
-    Args:
-        dataset (Type[Dataset]): The dataset class to use.
-        data_dir (str): Path to the dataset.
-        image_data_dir (str): Path to the directory containing image data.
-        task (str): Task to perform.
-        transform (bool): Whether to apply transformations to the data.
-        batch_size (int): Batch size for data loading.
-        fraction (float): Fraction of the dataset to use.
-        num_workers (int): Number of workers for data loading.
-        num_groups (int): Number of groups for stratification.
-    """
-
-    def __init__(self, dataset: Type[Dataset], data_dir: str, image_data_dir: str, task: str, transform: bool,
-                 batch_size: int = 32, fraction: float = 1, num_workers: int  = 11, num_groups: int = 4):
-        """Initializes the data module.
-
-        Args:
-            dataset (Type[Dataset]): The dataset class to use.
-            data_dir (str): Path to the dataset.
-            image_data_dir (str): Path to the directory containing image data.
-            task (str): Task to perform.
-            transform (bool): Whether to apply transformations to the data.
-            batch_size (int): Batch size for data loading.
-            fraction (float): Fraction of the dataset to use.
-            num_workers (int): Number of workers for data loading.
-            num_groups (int): Number of groups for stratification.
-        """
+    def __init__(self, dataset: Type[TorchDataset], data_dir: str, image_data_dir: str, task: str, transform: bool,
+                 batch_size: int = 32, fraction: float = 1, num_workers: int = 11, num_groups: int = 4):
+        """Initializes the data module."""
         super().__init__()
         self.dataset = dataset
         self.data_dir = data_dir
@@ -216,56 +180,31 @@ class DataModule(pl.LightningDataModule):
         mixup = transforms.MixUp(num_classes=1) 
         self.cutmix_or_mixup = transforms.RandomChoice([cutmix, mixup])
 
-    def collate_fn(self, batch):
-        """Collates a batch using either CutMix or MixUp.
-
-        Args:
-            batch (list): A list of data samples.
-
-        Returns:
-            Collated batch.
-        """
+    def collate_fn(self, batch: List[Dict[str, Any]]) -> Any:
+        """Collates a batch using either CutMix or MixUp."""
         return self.cutmix_or_mixup(*default_collate(batch))
 
-    def setup(self, stage: str) -> None:
-        """Sets up the dataset for training, validation, or testing.
-
-        Args:
-            stage (str): The stage of the pipeline ('fit', 'test').
-        """
+    def setup(self, stage: Optional[str] = None) -> None:
+        """Sets up the dataset for training, validation, or testing."""
         if stage == "fit":
             self.dataset_train = self.dataset(data_dir=self.data_dir, image_data_dir=self.image_data_dir,
-                                               type='train', transform=self.transform, fraction=self.fraction, task=self.task,
-                                                num_groups=self.num_groups)
+                                              type='train', transform=self.transform, fraction=self.fraction, 
+                                              task=self.task, num_groups=self.num_groups)
             self.dataset_val = self.dataset(data_dir=self.data_dir, image_data_dir=self.image_data_dir,
-                                             type='val', transform=False, task=self.task,
-                                             num_groups=self.num_groups)
+                                            type='val', transform=False, task=self.task, num_groups=self.num_groups)
 
         if stage == "test":
             self.dataset_test = self.dataset(data_dir=self.data_dir, image_data_dir=self.image_data_dir,
-                                              type='test', transform=False, task=self.task,
-                                              num_groups=self.num_groups)
+                                             type='test', transform=False, task=self.task, num_groups=self.num_groups)
 
     def train_dataloader(self) -> DataLoader:
-        """Returns the DataLoader for the training dataset.
-
-        Returns:
-            DataLoader: DataLoader for training.
-        """
+        """Returns the DataLoader for the training dataset."""
         return DataLoader(self.dataset_train, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True)
 
     def val_dataloader(self) -> DataLoader:
-        """Returns the DataLoader for the validation dataset.
-
-        Returns:
-            DataLoader: DataLoader for validation.
-        """
-        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True)
+        """Returns the DataLoader for the validation dataset."""
+        return DataLoader(self.dataset_val, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False)
 
     def test_dataloader(self) -> DataLoader:
-        """Returns the DataLoader for the test dataset.
-
-        Returns:
-            DataLoader: DataLoader for testing.
-        """
-        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=True)
+        """Returns the DataLoader for the test dataset."""
+        return DataLoader(self.dataset_test, batch_size=self.batch_size, num_workers=self.num_workers, shuffle=False)
