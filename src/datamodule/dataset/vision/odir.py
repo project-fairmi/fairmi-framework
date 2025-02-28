@@ -2,7 +2,7 @@ import torch
 import pandas as pd
 import random
 from PIL import Image
-from ..dataset import Dataset, DataModule
+from ..base import Dataset, DataModule
 
 class Odir(Dataset):
     """ODIR dataset.

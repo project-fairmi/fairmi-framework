@@ -1,6 +1,6 @@
 import pandas as pd
 import random
-from ..dataset import Dataset, DataModule
+from ..base import Dataset, DataModule
 
 class Brset(Dataset):
     """Brset dataset.
