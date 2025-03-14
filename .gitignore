@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 slurm
+config.yml
 
 # C extensions
 *.so

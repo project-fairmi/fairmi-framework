@@ -12,7 +12,7 @@ class Brset(Dataset):
         labels (pd.DataFrame): DataFrame containing the metadata and labels.
     """
 
-    def __init__(self, data_dir: str, image_data_dir: str, type: str, labels_file: str = 'labels_brset.csv',
+    def __init__(self, data_dir: str, image_data_dir: str, type: str, labels_file: str = 'labels.csv',
                 image_column: str = 'image_id', transform: bool = False, fraction: float = 1, task: str = 'diabetic_retinopathy', 
                 num_groups: int = 4, patient_id_column: str = 'patient_id', 
                 age_column: str = 'patient_age', gender_column: str = 'patient_sex'):  
