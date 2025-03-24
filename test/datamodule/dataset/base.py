@@ -124,7 +124,11 @@ class BaseDatasetTest:
         assert len(dataset) > 0, f"Dataset should not be empty for {num_groups} groups"
         
         # Collect all 'group' values in a tensor
-        all_groups = torch.stack([torch.tensor(dataset[i]['age']) for i in range(len(dataset))])
+        all_groups = torch.stack([
+            dataset[i]['age'].clone().detach() if isinstance(dataset[i]['age'], torch.Tensor) 
+            else torch.tensor(dataset[i]['age']) 
+            for i in range(len(dataset))
+        ])
         
         # Collect diagnostic information
         unique_groups = torch.unique(all_groups)

@@ -1,9 +1,12 @@
+# Project
+slurm
+config.yml
+src/test*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-slurm
-config.yml
 
 # C extensions
 *.so
