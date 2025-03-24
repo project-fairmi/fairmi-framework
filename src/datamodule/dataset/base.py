@@ -145,10 +145,10 @@ class Dataset(TorchDataset):
         else:
             image = self.initial_transform(image)
         
-        label = torch.tensor([self.labels.loc[idx, 'labels']]).int()
-        gender = self.labels.loc[idx, 'gender_group'].int()
-        age = self.labels.loc[idx, 'age_group'].int()
-        group = self.labels.loc[idx, 'group'].int()
+        label = torch.tensor([self.labels.loc[idx, 'labels']], dtype=torch.int8)
+        gender = torch.tensor(self.labels.loc[idx, 'gender_group'], dtype=torch.int8)
+        age = torch.tensor(self.labels.loc[idx, 'age_group'], dtype=torch.int8)
+        group = self.labels.loc[idx, 'group']
         
         return {
             'image': image,
