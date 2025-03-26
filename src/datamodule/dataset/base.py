@@ -19,10 +19,10 @@ TEST_SPLIT = 0.3
 class Dataset(TorchDataset):
     """Base dataset for loading and processing data for machine learning tasks."""
 
-    def __init__(self, data_dir: str, image_data_dir: str, labels_file: str, image_column: str, type: str, 
+    def __init__(self, data_dir: str, image_data_dir: str, labels_file: str, type: str, image_column: Optional[str] = None, 
                  transform: bool = False, fraction: float = 1, age_column: Optional[str] = None, 
                  gender_column: Optional[str] = None, num_groups: int = 4, task: Optional[str] = None, 
-                 patient_id_column: Optional[str] = None):
+                 patient_id_column: Optional[str] = None, path_column: Optional[str] = None):
         """Initializes the dataset."""
         random.seed(RANDOM_SEED)
         self.image_data_dir = image_data_dir
@@ -36,6 +36,7 @@ class Dataset(TorchDataset):
         self.task = task
         self.patient_id_column = patient_id_column
         self.image_column = image_column
+        self.path_column = path_column
         
         self.labels = self._set_labels(labels_file)
         self.initial_transform = self._get_initial_transform()
@@ -76,6 +77,10 @@ class Dataset(TorchDataset):
         if self.task:
             self.labels[self.task] = self.labels[self.task].fillna(0)
             self.labels['labels'] = self.labels[self.task]
+        
+        if self.path_column is None and self.image_column is not None:
+            self.labels['path'] = self.labels[self.image_column].apply(lambda x: f"{self.image_data_dir}/{x}.jpg")
+            self.path_column = 'path'
 
     def split(self):
         """Splits the dataset into training, validation, and test sets based on patient IDs."""
@@ -137,7 +142,7 @@ class Dataset(TorchDataset):
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         """Returns a single item from the dataset at the given index."""
-        image_path = f"{self.image_data_dir}/{self.labels.loc[idx, self.image_column]}.jpg"
+        image_path = self.labels[self.path_column].iloc[idx]
         image = Image.open(image_path).convert("RGB")
 
         if self.transform:
