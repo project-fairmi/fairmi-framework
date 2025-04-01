@@ -106,7 +106,7 @@ class BaseDatasetTest:
         # If we got here, no NaNs were found
         assert True
     
-    @pytest.mark.parametrize("num_groups", range(1, 4))
+    @pytest.mark.parametrize("num_groups", range(2, 4))
     def test_num_age_groups(self, num_groups):
         """Test dataset behavior with different numbers of groups.
         

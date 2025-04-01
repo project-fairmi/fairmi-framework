@@ -1,5 +1,5 @@
-import pandas as pd
 import random
+import pandas as pd
 from ..base import Dataset, DataModule
 
 class Brset(Dataset):
@@ -32,9 +32,11 @@ class Brset(Dataset):
             age_column (str): Name of the column containing patient ages.
             gender_column (str): Name of the column containing patient gender.
         """
-        super().__init__(data_dir, image_data_dir, labels_file, image_column, type, transform, fraction, age_column, gender_column, num_groups, task, patient_id_column)
+        super().__init__(data_dir=data_dir, image_data_dir=image_data_dir, labels_file=labels_file, 
+                image_column=image_column, type=type, transform=transform, fraction=fraction, 
+                age_column=age_column, gender_column=gender_column, num_groups=num_groups, 
+                task=task, patient_id_column=patient_id_column)
         random.seed(42)
-
         self.configure_dataset()
         self.split()
 

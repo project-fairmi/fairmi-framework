@@ -1,4 +1,4 @@
-from typing import List, Type, Optional, Dict, Any
+from typing import List, Type, Optional, Dict, Union, Any
 import lightning as pl
 import torch
 from torch.utils.data import DataLoader, Dataset as TorchDataset
@@ -19,7 +19,7 @@ TEST_SPLIT = 0.3
 class Dataset(TorchDataset):
     """Base dataset for loading and processing data for machine learning tasks."""
 
-    def __init__(self, data_dir: str, image_data_dir: str, labels_file: str, type: str, image_column: Optional[str] = None, 
+    def __init__(self, data_dir: str, image_data_dir: str, labels_file: Union[str, List[str]], type: str, image_column: Optional[str] = None, 
                  transform: bool = False, fraction: float = 1, age_column: Optional[str] = None, 
                  gender_column: Optional[str] = None, num_groups: int = 4, task: Optional[str] = None, 
                  patient_id_column: Optional[str] = None, path_column: Optional[str] = None):
@@ -43,7 +43,9 @@ class Dataset(TorchDataset):
 
     def _set_labels(self, labels_file: str) -> pd.DataFrame:
         """Sets the labels for the dataset."""
-        if labels_file.endswith('.csv'):
+        if isinstance(labels_file, list):
+            return pd.concat([pd.read_csv(f"{self.data_dir}/{file}") for file in labels_file])
+        elif labels_file.endswith('.csv'):
             return pd.read_csv(f"{self.data_dir}/{labels_file}")
         else:
             raise ValueError(f'Invalid file format: {labels_file} (must be .csv)')
@@ -140,7 +142,7 @@ class Dataset(TorchDataset):
         """Returns the length of the dataset."""
         return len(self.labels)
 
-    def __getitem__(self, idx: int) -> Dict[str, Any]:
+    def __getitem__(self, idx: int) -> Dict:
         """Returns a single item from the dataset at the given index."""
         image_path = self.labels[self.path_column].iloc[idx]
         image = Image.open(image_path).convert("RGB")

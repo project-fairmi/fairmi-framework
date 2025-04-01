@@ -1,6 +1,4 @@
-import random
 from ..base import Dataset, DataModule
-
 class CheXpert(Dataset):
     """CheXpert dataset for chest X-ray classification.
 
@@ -15,10 +13,10 @@ class CheXpert(Dataset):
         labels (pd.DataFrame): DataFrame containing the metadata and labels.
     """
 
-    def __init__(self, data_dir: str, image_data_dir: str, type: str, labels_file: str = 'train.csv',
+    def __init__(self, data_dir: str, type: str, labels_file: str = ['train.csv', 'valid.csv'],
                  image_column: str = None, transform: bool = False, fraction: float = 1, task: str = 'Pneumonia', 
                  num_groups: int = 3, patient_id_column: str = 'Patient', 
-                 age_column: str = 'Age', gender_column: str = 'Sex', path_column: str = 'Path'):
+                 age_column: str = 'Age', gender_column: str = 'Sex', path_column: str = 'Path', image_data_dir: str = None):
         """Initializes the CheXpert dataset.
 
         Args:
@@ -35,18 +33,26 @@ class CheXpert(Dataset):
             age_column (str): Name of the column containing patient ages.
             gender_column (str): Name of the column containing patient gender.
         """
-        super().__init__(data_dir, image_data_dir, labels_file, image_column, type, transform, fraction, age_column, gender_column, num_groups, task, patient_id_column, path_column=path_column)
-        random.seed(42)
-
-        # Preprocess the labels file to extract patient ID from study path
-        self.labels[patient_id_column] = self.labels[image_column].apply(lambda x: x.split('/')[2])
-        
-        # Handle uncertain labels (convert -1 to 1 as per CheXpert paper recommendation)
-        if task in self.labels.columns:
-            self.labels[task] = self.labels[task].fillna(0).replace(-1, 1)
+        super().__init__(data_dir=data_dir, image_data_dir=image_data_dir, labels_file=labels_file, 
+                image_column=image_column, type=type, transform=transform, fraction=fraction, 
+                age_column=age_column, gender_column=gender_column, num_groups=num_groups, 
+                task=task, patient_id_column=patient_id_column, path_column=path_column)
         
         self.configure_dataset()
         self.split()
+
+    def configure_dataset(self):
+        super().configure_dataset()
+
+        # Preprocess the labels file to extract patient ID from study path
+        self.labels[self.patient_id_column] = self.labels[self.path_column].apply(lambda x: x.split('/')[2])
+
+        # remove the /CheXpert-v1.0-small/ from the path
+        self.labels[self.path_column] = self.labels[self.path_column].apply(lambda x: f"{self.data_dir}/{x}").apply(lambda x: x.replace('/CheXpert-v1.0-small/', '/'))
+        
+        # Handle uncertain labels (convert -1 to 1 as per CheXpert paper recommendation)
+        if self.task in self.labels.columns:
+            self.labels[self.task] = self.labels[self.task].fillna(0).replace(-1, 1)
 
 def CheXpertModule(data_dir: str, 
                    image_data_dir: str, 
