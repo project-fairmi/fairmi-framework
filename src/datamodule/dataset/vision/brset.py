@@ -43,6 +43,7 @@ class Brset(Dataset):
             age_column (str): Name of the column containing patient ages.
             gender_column (str): Name of the column containing patient genders.
         """
+        random.seed(42)
         super().__init__(
             data_dir=data_dir,
             image_data_dir=image_data_dir,
@@ -57,7 +58,6 @@ class Brset(Dataset):
             task=task,
             patient_id_column=patient_id_column
         )
-        random.seed(42)
         self.configure_dataset()
         self.split()
 
@@ -72,7 +72,7 @@ class Brset(Dataset):
         positive_cases = self.labels[self.labels[self.task] == 1]
         negative_cases = self.labels[self.labels[self.task] == 0]
         n_positive = len(positive_cases)
-        sampled_negative_cases = negative_cases.sample(n=n_positive)
+        sampled_negative_cases = negative_cases.sample(n=n_positive, random_state=42)
         self.labels = pd.concat([positive_cases, sampled_negative_cases]).reset_index(drop=True)
 
 def BrsetModule(batch_size: int = 32,
