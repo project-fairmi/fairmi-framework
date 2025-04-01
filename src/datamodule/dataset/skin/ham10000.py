@@ -22,7 +22,7 @@ class Ham10000(Dataset):
                  image_column: str = 'image_id',
                  transform: bool = False,
                  fraction: float = 1,
-                 task: str = 'diagnosis',
+                 task: str = 'mel',
                  num_groups: int = 4,
                  patient_id_column: str = 'lesion_id',
                  age_column: str = 'age',
