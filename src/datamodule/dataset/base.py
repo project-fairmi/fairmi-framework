@@ -81,7 +81,9 @@ class Dataset(TorchDataset):
             self.labels['labels'] = self.labels[self.task]
         
         if self.path_column is None and self.image_column is not None:
-            self.labels['path'] = self.labels[self.image_column].apply(lambda x: f"{self.image_data_dir}/{x}.jpg")
+            self.labels['path'] = self.labels[self.image_column].apply(
+                lambda x: f"{self.image_data_dir}/{x}" if str(x).lower().endswith('.jpg') else f"{self.image_data_dir}/{x}.jpg"
+            )
             self.path_column = 'path'
 
     def split(self):
