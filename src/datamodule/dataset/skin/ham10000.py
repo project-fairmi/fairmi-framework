@@ -1,33 +1,33 @@
-import random
 import pandas as pd
 from ..base import Dataset, DataModule
 
-class Brset(Dataset):
-    """Brset dataset.
+class Ham10000(Dataset):
+    """HAM10000 dataset.
 
-    This class represents the Brset dataset containing image data and associated metadata.
+    This class represents the HAM10000 dataset containing image data
+    and associated metadata.
 
     Attributes:
         data_dir (str): Path to the directory containing the dataset.
         image_data_dir (str): Path to the directory containing image data.
-        transform (bool): Flag that determines whether transformations are applied.
-        labels (pd.DataFrame): DataFrame containing metadata and labels.
+        transform (bool): Whether to apply transformations to the images.
+        labels (pd.DataFrame): DataFrame containing the metadata and labels.
     """
 
     def __init__(self,
                  data_dir: str,
                  image_data_dir: str,
                  type: str,
-                 labels_file: str = 'labels.csv',
+                 labels_file: str = 'HAM10000_metadata.csv',
                  image_column: str = 'image_id',
                  transform: bool = False,
                  fraction: float = 1,
-                 task: str = 'diabetic_retinopathy',
+                 task: str = 'diagnosis',
                  num_groups: int = 4,
-                 patient_id_column: str = 'patient_id',
-                 age_column: str = 'patient_age',
-                 gender_column: str = 'patient_sex') -> None:
-        """Initializes the Brset dataset.
+                 patient_id_column: str = 'lesion_id',
+                 age_column: str = 'age',
+                 gender_column: str = 'sex') -> None:
+        """Initializes the HAM10000 dataset.
 
         Args:
             data_dir (str): Path to the dataset.
@@ -41,7 +41,7 @@ class Brset(Dataset):
             num_groups (int): Number of groups for stratification.
             patient_id_column (str): Name of the column containing patient IDs.
             age_column (str): Name of the column containing patient ages.
-            gender_column (str): Name of the column containing patient genders.
+            gender_column (str): Name of the column containing patient gender.
         """
         super().__init__(
             data_dir=data_dir,
@@ -57,45 +57,35 @@ class Brset(Dataset):
             task=task,
             patient_id_column=patient_id_column
         )
-        random.seed(42)
         self.configure_dataset()
         self.split()
 
     def configure_dataset(self) -> None:
-        """Configures the dataset by balancing positive and negative cases.
+        """Configures the dataset for the HAM10000 dataset.
 
-        This method separates positive and negative cases based on the task column,
-        samples negative cases to match the number of positive cases, and concatenates
-        them into a balanced DataFrame.
+        This method augments the labels DataFrame by creating dummy variables
+        for the diagnosis column ('dx') and then calls the superclass configuration.
         """
+        dummies = pd.get_dummies(self.labels['dx'])
+        self.labels = pd.concat([self.labels, dummies], axis=1)
         super().configure_dataset()
-        positive_cases = self.labels[self.labels[self.task] == 1]
-        negative_cases = self.labels[self.labels[self.task] == 0]
-        n_positive = len(positive_cases)
-        sampled_negative_cases = negative_cases.sample(n=n_positive)
-        self.labels = pd.concat([positive_cases, sampled_negative_cases]).reset_index(drop=True)
 
-def BrsetModule(batch_size: int = 32,
-                num_workers: int = 11,
-                **kwargs) -> DataModule:
-    """Creates a DataModule for the Brset dataset.
+def Ham10000Module(batch_size: int = 32,
+                   num_workers: int = 4,
+                   **kwargs) -> DataModule:
+    """Creates a DataModule for the HAM10000 dataset.
 
     Args:
         batch_size (int): Batch size for data loading.
         num_workers (int): Number of workers for data loading.
-        **kwargs: Additional keyword arguments including:
-            - data_dir (str): Path to the dataset.
-            - image_data_dir (str): Path to the directory containing image data.
-            - transform (bool): Whether to apply transformations to the images.
-            - task (str): Task to perform.
-            - fraction (float): Fraction of the dataset to use.
-            - num_groups (int): Number of groups for stratification.
+        **kwargs: Additional keyword arguments for initializing the dataset,
+                  such as data_dir, image_data_dir, transform, task, etc.
 
     Returns:
-        DataModule: A DataModule instance configured for the Brset dataset.
+        DataModule: A DataModule instance configured for the HAM10000 dataset.
     """
     return DataModule(
-        dataset=Brset,
+        dataset=Ham10000,
         batch_size=batch_size,
         num_workers=num_workers,
         **kwargs
