@@ -65,9 +65,12 @@ class Ham10000(Dataset):
 
         This method augments the labels DataFrame by creating dummy variables
         for the diagnosis column ('dx') and then calls the superclass configuration.
+        It also replaces any zero values in the age column with one to work with the
+        age_groups correct in the dataset, if use 0 results in NaN groups.
         """
         dummies = pd.get_dummies(self.labels['dx'])
         self.labels = pd.concat([self.labels, dummies], axis=1)
+        self.labels[self.age_column] = self.labels[self.age_column].replace(0, 1)
         super().configure_dataset()
 
 def Ham10000Module(batch_size: int = 32,
