@@ -2,6 +2,8 @@
 slurm
 config.yml
 src/test*
+.cache
+output
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
