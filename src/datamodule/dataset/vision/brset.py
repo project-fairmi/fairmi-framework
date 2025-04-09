@@ -20,13 +20,13 @@ class Brset(Dataset):
                  type: str,
                  labels_file: str = 'labels.csv',
                  image_column: str = 'image_id',
-                 transform: bool = False,
                  fraction: float = 1,
                  task: str = 'diabetic_retinopathy',
                  num_groups: int = 4,
                  patient_id_column: str = 'patient_id',
                  age_column: str = 'patient_age',
-                 gender_column: str = 'patient_sex') -> None:
+                 gender_column: str = 'patient_sex',
+                 **kwargs) -> None:
         """Initializes the Brset dataset.
 
         Args:
@@ -50,13 +50,13 @@ class Brset(Dataset):
             labels_file=labels_file,
             image_column=image_column,
             type=type,
-            transform=transform,
             fraction=fraction,
             age_column=age_column,
             gender_column=gender_column,
             num_groups=num_groups,
             task=task,
-            patient_id_column=patient_id_column
+            patient_id_column=patient_id_column,
+            **kwargs
         )
         self.configure_dataset()
         self.split()
@@ -76,7 +76,7 @@ class Brset(Dataset):
         self.labels = pd.concat([positive_cases, sampled_negative_cases]).reset_index(drop=True)
 
 def BrsetModule(batch_size: int = 32,
-                num_workers: int = 11,
+                num_workers: int = 1,
                 **kwargs) -> DataModule:
     """Creates a DataModule for the Brset dataset.
 

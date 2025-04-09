@@ -73,9 +73,9 @@ class BaseDatasetTest:
         
         assert isinstance(item['image'], torch.Tensor), "Image should be a torch.Tensor"
         assert isinstance(item['label'], torch.Tensor), "Label should be of type torch.Tensor"
-        assert (item['gender'].dtype == torch.int8) or \
+        assert (item['gender'].dtype == torch.long) or \
             (torch.isnan(item['gender']).any()), "Gender should be torch.int8 or contain NaN values"
-        assert (item['age'].dtype == torch.int8) or \
+        assert (item['age'].dtype == torch.long) or \
             (torch.isnan(item['age']).any()), "Age should be torch.int8 or contain NaN values"
         # assert (item['group'].dtype == torch.int8) or \
         #     (torch.isnan(item['group']).any()), "Group should be torch.int8 or contain NaN values"

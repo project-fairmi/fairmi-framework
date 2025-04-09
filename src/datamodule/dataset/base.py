@@ -19,15 +19,16 @@ TEST_SPLIT = 0.3
 class Dataset(TorchDataset):
     """Base dataset for loading and processing data for machine learning tasks."""
 
-    def __init__(self, data_dir: str, image_data_dir: str, labels_file: Union[str, List[str]], type: str, image_column: Optional[str] = None, 
-                 transform: bool = False, fraction: float = 1, age_column: Optional[str] = None, 
-                 gender_column: Optional[str] = None, num_groups: int = 4, task: Optional[str] = None, 
+    def __init__(self, data_dir: str, image_data_dir: str, labels_file: Union[str, List[str]], type: str, model_transform: transforms.Compose,
+                 image_column: Optional[str] = None, augment: bool = False, fraction: float = 1, age_column: Optional[str] = None,
+                 gender_column: Optional[str] = None, num_groups: int = 4, task: Optional[str] = None,
                  patient_id_column: Optional[str] = None, path_column: Optional[str] = None):
         """Initializes the dataset."""
         random.seed(RANDOM_SEED)
         self.image_data_dir = image_data_dir
         self.type = type
-        self.transform = transform
+        self.model_transform = model_transform
+        self.augment = augment
         self.data_dir = data_dir
         self.fraction = fraction
         self.age_column = age_column
@@ -37,9 +38,9 @@ class Dataset(TorchDataset):
         self.patient_id_column = patient_id_column
         self.image_column = image_column
         self.path_column = path_column
-        
+
         self.labels = self._set_labels(labels_file)
-        self.initial_transform = self._get_initial_transform()
+        self.augmentation_transform = self._get_augmentation_transform()
 
     def _set_labels(self, labels_file: str) -> pd.DataFrame:
         """Sets the labels for the dataset."""
@@ -50,13 +51,11 @@ class Dataset(TorchDataset):
         else:
             raise ValueError(f'Invalid file format: {labels_file} (must be .csv)')
 
-    def _get_initial_transform(self) -> transforms.Compose:
-        """Returns the initial transformation pipeline for the dataset."""
+    def _get_augmentation_transform(self) -> transforms.Compose:
+        """Returns the augmentation transformation pipeline."""
+        # Define augmentations here. Using RandAugment as before.
         return transforms.Compose([
-            transforms.ToImage(),  
-            transforms.ToDtype(torch.float32, scale=True),
-            transforms.Resize((224, 224)),
-            transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+            transforms.RandAugment(num_ops=4)
         ])
 
     def configure_dataset(self):
@@ -112,13 +111,6 @@ class Dataset(TorchDataset):
         else:
             raise ValueError(f'Invalid type: {self.type} (must be train, val or test/eval)')
 
-    def transforms(self) -> transforms.Compose:
-        """Returns the transformation pipeline for the dataset."""
-        return transforms.Compose([
-            self.initial_transform,
-            transforms.RandAugment(num_ops=4)
-        ])
-
     def _convert_gender_to_binary(self, column: pd.Series) -> pd.Series:
         """Converts gender values to binary format (0 for female, 1 for male)."""
         female_pattern = re.compile(r'^(f|feminine|female|woman|girl)$', re.IGNORECASE)
@@ -149,14 +141,16 @@ class Dataset(TorchDataset):
         image_path = self.labels[self.path_column].iloc[idx]
         image = Image.open(image_path).convert("RGB")
 
-        if self.transform:
-            image = self.transforms()(image)
-        else:
-            image = self.initial_transform(image)
-        
-        label = torch.tensor([self.labels.loc[idx, 'labels']], dtype=torch.int8)
-        gender = torch.tensor(self.labels.loc[idx, 'gender_group'], dtype=torch.int8)
-        age = torch.tensor(self.labels.loc[idx, 'age_group'], dtype=torch.int8)
+        # Apply the mandatory base transform
+        image = self.model_transform(image)
+
+        # Apply augmentations if specified
+        if self.augment:
+            image = self.augmentation_transform(image)
+
+        label = torch.tensor([self.labels.loc[idx, 'labels']], dtype=torch.float32)
+        gender = torch.tensor(self.labels.loc[idx, 'gender_group'], dtype=torch.long)
+        age = torch.tensor(self.labels.loc[idx, 'age_group'], dtype=torch.long)
         group = self.labels.loc[idx, 'group']
         
         return {
@@ -170,14 +164,15 @@ class Dataset(TorchDataset):
 class DataModule(pl.LightningDataModule):
     """Data module for handling dataset operations in a PyTorch Lightning pipeline."""
 
-    def __init__(self, dataset: Type[TorchDataset], data_dir: str, image_data_dir: str, task: str, transform: bool,
-                 batch_size: int = 32, fraction: float = 1, num_workers: int = 11, num_groups: int = 4):
+    def __init__(self, dataset: Type[TorchDataset], data_dir: str, image_data_dir: str, task: str, model_transform: transforms.Compose,
+                 augment_train: bool = False, batch_size: int = 32, fraction: float = 1, num_workers: int = 11, num_groups: int = 4):
         """Initializes the data module."""
         super().__init__()
         self.dataset = dataset
         self.data_dir = data_dir
         self.image_data_dir = image_data_dir
-        self.transform = transform
+        self.model_transform = model_transform # Now required
+        self.augment_train = augment_train # Store the augmentation flag for training
         self.batch_size = batch_size
         self.fraction = fraction
         self.num_workers = num_workers
@@ -195,16 +190,21 @@ class DataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         """Sets up the dataset for training, validation, or testing."""
-        if stage == "fit":
+        if stage == "fit" or stage is None: # Ensure setup runs if stage is None (e.g., during testing without fit)
             self.dataset_train = self.dataset(data_dir=self.data_dir, image_data_dir=self.image_data_dir,
-                                              type='train', transform=self.transform, fraction=self.fraction, 
-                                              task=self.task, num_groups=self.num_groups)
+                                              type='train', model_transform=self.model_transform, augment=self.augment_train,
+                                              fraction=self.fraction, task=self.task, num_groups=self.num_groups)
             self.dataset_val = self.dataset(data_dir=self.data_dir, image_data_dir=self.image_data_dir,
-                                            type='val', transform=False, task=self.task, num_groups=self.num_groups)
+                                            type='val', model_transform=self.model_transform, augment=False, # No augmentation for validation
+                                            task=self.task, num_groups=self.num_groups)
 
-        if stage == "test":
-            self.dataset_test = self.dataset(data_dir=self.data_dir, image_data_dir=self.image_data_dir,
-                                             type='test', transform=False, task=self.task, num_groups=self.num_groups)
+        if stage == "test" or stage is None:
+             # Ensure setup runs if stage is None (e.g., during testing without fit)
+             # Check if dataset_test already exists to avoid re-instantiation if setup(None) was called
+            if not hasattr(self, 'dataset_test'):
+                self.dataset_test = self.dataset(data_dir=self.data_dir, image_data_dir=self.image_data_dir,
+                                                type='test', model_transform=self.model_transform, augment=False, # No augmentation for test
+                                                task=self.task, num_groups=self.num_groups)
 
     def train_dataloader(self) -> DataLoader:
         """Returns the DataLoader for the training dataset."""

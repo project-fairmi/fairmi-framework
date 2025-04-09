@@ -18,13 +18,13 @@ class Odir(Dataset):
                  type: str,
                  labels_file: str = 'full_df.csv',
                  image_column: str = 'filename',
-                 transform: bool = False,
                  fraction: float = 1,
                  task: str = 'D',
                  num_groups: int = 4,
                  patient_id_column: str = 'ID',
                  age_column: str = 'Patient Age',
-                 gender_column: str = 'Patient Sex') -> None:
+                 gender_column: str = 'Patient Sex',
+                 **kwargs) -> None:
         """Initializes the ODIR dataset.
 
         Args:
@@ -47,13 +47,13 @@ class Odir(Dataset):
             labels_file=labels_file,
             image_column=image_column,
             type=type,
-            transform=transform,
             fraction=fraction,
             age_column=age_column,
             gender_column=gender_column,
             num_groups=num_groups,
             task=task,
-            patient_id_column=patient_id_column
+            patient_id_column=patient_id_column,
+            **kwargs
         )
         self.configure_dataset()
         self.split()

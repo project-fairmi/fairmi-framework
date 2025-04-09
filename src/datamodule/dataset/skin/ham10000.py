@@ -26,7 +26,8 @@ class Ham10000(Dataset):
                  num_groups: int = 4,
                  patient_id_column: str = 'lesion_id',
                  age_column: str = 'age',
-                 gender_column: str = 'sex') -> None:
+                 gender_column: str = 'sex',
+                 **kwargs) -> None:
         """Initializes the HAM10000 dataset.
 
         Args:
@@ -49,13 +50,13 @@ class Ham10000(Dataset):
             labels_file=labels_file,
             image_column=image_column,
             type=type,
-            transform=transform,
             fraction=fraction,
             age_column=age_column,
             gender_column=gender_column,
             num_groups=num_groups,
             task=task,
-            patient_id_column=patient_id_column
+            patient_id_column=patient_id_column,
+            **kwargs
         )
         self.configure_dataset()
         self.split()

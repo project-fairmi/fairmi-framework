@@ -21,7 +21,6 @@ class CheXpert(Dataset):
                  type: str,
                  labels_file: Union[str, List[str]] = ['train.csv', 'valid.csv'],
                  image_column: str = None,
-                 transform: bool = False,
                  fraction: float = 1,
                  task: str = 'Pneumonia',
                  num_groups: int = 3,
@@ -29,7 +28,8 @@ class CheXpert(Dataset):
                  age_column: str = 'Age',
                  gender_column: str = 'Sex',
                  path_column: str = 'Path',
-                 image_data_dir: str = None) -> None:
+                 image_data_dir: str = None,
+                 **kwargs) -> None:
         """Initializes the CheXpert dataset.
 
         Args:
@@ -53,14 +53,14 @@ class CheXpert(Dataset):
             labels_file=labels_file,
             image_column=image_column,
             type=type,
-            transform=transform,
             fraction=fraction,
             age_column=age_column,
             gender_column=gender_column,
             num_groups=num_groups,
             task=task,
             patient_id_column=patient_id_column,
-            path_column=path_column
+            path_column=path_column,
+            **kwargs
         )
 
         self.configure_dataset()
