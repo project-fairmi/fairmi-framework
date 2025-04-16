@@ -171,7 +171,7 @@ class Dataset(TorchDataset):
     def __getitem__(self, idx: int) -> Dict:
         """Returns a single item from the dataset at the given index."""
         image_path = self.labels[self.path_column].iloc[idx]
-        image = Image.open(image_path)
+        image = Image.open(image_path).convert("RGB")
 
         image = self.transforms(image)
 
