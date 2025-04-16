@@ -59,7 +59,7 @@ def main(args: argparse.Namespace):
 
     # Instantiate model first to get its transform
     model_name = config['model']['name']
-    model_id = config['model'][model_name]
+    model_id = config['model'][model_name]['id']
 
     # Configure checkpointing
     checkpoint_callback = ModelCheckpoint(
@@ -73,10 +73,13 @@ def main(args: argparse.Namespace):
     # Configure the PyTorch Lightning Trainer
     print("Configuring Trainer...")
     trainer = pl.Trainer(
-        precision="bf16-true", # Consider making this configurable via args/config
+        precision="16-true", # Consider making this configurable via args/config
         max_epochs=args.max_epochs,
         logger=TensorBoardLogger('output/logs/', name=args.name),
-        callbacks=[checkpoint_callback]
+        callbacks=[checkpoint_callback],
+        strategy=args.strategy,
+        num_nodes=args.num_nodes,
+        accumulate_grad_batches=args.accumulate_grad_batches,
     )
 
     # Configure and initialize the actual model instance to be used for training/testing
@@ -85,11 +88,14 @@ def main(args: argparse.Namespace):
     print("Initializing model within Trainer context...")
     with trainer.init_module():
          model = VisionTransformerModel(
-             num_classes=num_classes,
-             learning_rate=args.learning_rate, # Initial LR, potentially overridden by tuner
-             weight_decay=args.weight_decay,
-             num_age_groups=args.num_groups,
-             model_id=model_id,
+            num_classes=num_classes,
+            learning_rate=args.learning_rate,
+            weight_decay=args.weight_decay,
+            num_age_groups=args.num_groups,
+            model_id=model_id,
+            pretrained=args.pretrained,
+            max_epochs=args.max_epochs,
+            weights_path=config['model'][model_name]['weights_path'],
          )
 
     # Instantiate the correct DataModule based on the dataset argument
@@ -107,19 +113,6 @@ def main(args: argparse.Namespace):
         num_groups=args.num_groups # This corresponds to num_age_groups in the model
     )
 
-
-    # Optional: Perform learning rate tuning before starting the main training/testing.
-    if args.tune:
-        print("Starting learning rate tuning...")
-        tuner = Tuner(trainer)
-        lr_finder_result = tuner.lr_find(model, datamodule=datamodule)
-        suggested_lr = lr_finder_result.suggestion()
-        print(f"Optimal Learning Rate suggested by tuner: {suggested_lr}")
-        model.learning_rate = suggested_lr # Update model's LR with the suggested value
-        print("Learning rate updated.")
-        # Note: The script currently proceeds to training/testing after tuning.
-
-    # Execute either the testing or the training pipeline.
     if args.test:
         print("Running in test-only mode...")
         # Assumes a checkpoint exists from a previous run or is specified.
@@ -132,6 +125,14 @@ def main(args: argparse.Namespace):
             ckpt_path="best" # Loads the best checkpoint saved during fit
         )
     else:
+        if args.tune:
+            print("Starting learning rate tuning...")
+            tuner = Tuner(trainer)
+            tuner.scale_batch_size(model, datamodule=datamodule, mode="power", init_val=4)
+            # lr_finder_results = tuner.lr_find(model, datamodule=datamodule)
+            # suggested_lr = model.learning_rate
+            # print(f"Suggested learning rate: {suggested_lr}; Suggestion from results: {lr_finder_results.suggestion()}")
+
         print("Starting training...")
         trainer.fit(
             model,
@@ -161,6 +162,9 @@ if __name__ == "__main__":
     parser.add_argument('--weight_decay', type=float, default=config['training']['weight_decay'], help='Weight decay (L2 penalty) for the optimizer.')
     parser.add_argument('--augment_train', action='store_true', default=config['training'].get('augment_train', False), help='Apply data augmentation during training.')
     parser.add_argument('--tune', action='store_true', default=config['training']['tune'], help='Enable learning rate tuning before training.') # Changed to action='store_true'
+    parser.add_argument('--num_nodes', type=int, default=config['training']['num_nodes'], help='Number of nodes for distributed training.')
+    parser.add_argument('--strategy', type=str, default=config['training']['strategy'], help='Distributed training strategy (e.g., ddp, dp).')
+    parser.add_argument('--accumulate_grad_batches', type=int, default=config['training']['accumulate_grad_batches'], help='Number of batches to accumulate gradients before updating the model.')
 
     # --- Data Configuration ---
     parser.add_argument('--dataset', type=str, default=config['data']['dataset'], choices=list(DATASET_MODULES.keys()), help='Select the dataset to use.')
@@ -170,7 +174,7 @@ if __name__ == "__main__":
 
     # --- Model Configuration ---
     parser.add_argument('--model_name', type=str, default=config['model']['name'], help='Identifier for the specific model architecture (used with config.yml).')
-
+    parser.add_argument('--pretrained', action='store_true', default=config['model']['pretrained'], help='Use a pretrained model. If False, train from scratch.')
     # --- Logging and Execution Control ---
     parser.add_argument('--name', type=str, default=config['log']['name'], help='Experiment name used for TensorBoard logging directory.')
     parser.add_argument('--test', action='store_true', help='Run in test-only mode. Requires a trained checkpoint (uses "best" by default).')
