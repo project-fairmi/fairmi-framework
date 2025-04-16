@@ -40,7 +40,7 @@ class Dataset(TorchDataset):
         self.path_column = path_column
 
         self.labels = self._set_labels(labels_file)
-        self.augmentation_transform = self._get_augmentation_transform()
+        self.transforms = self._get_transforms()
 
     def _set_labels(self, labels_file: str) -> pd.DataFrame:
         """Sets the labels for the dataset."""
@@ -57,6 +57,38 @@ class Dataset(TorchDataset):
         return transforms.Compose([
             transforms.RandAugment(num_ops=4)
         ])
+
+    def _get_transforms(self) -> transforms.Compose:
+        """Returns the final transformation pipeline, potentially combining model-specific and augmentation transforms."""
+        final_transforms_list = []
+
+        # Add model-specific transforms (or default if none provided)
+        model_transform_to_add = self.model_transform
+        if not model_transform_to_add:
+            model_transform_to_add = transforms.Compose([
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+            ])
+        
+        # Flatten model transforms if it's a Compose object
+        if isinstance(model_transform_to_add, transforms.Compose):
+            final_transforms_list.extend(model_transform_to_add.transforms)
+        else:
+            # Handle cases where model_transform might be a single transform function
+            final_transforms_list.append(model_transform_to_add)
+
+        # Add augmentation transforms if enabled
+        if self.augment:
+            augmentation_transform = self._get_augmentation_transform()
+            # Flatten augmentation transforms if it's a Compose object
+            if isinstance(augmentation_transform, transforms.Compose):
+                 final_transforms_list.extend(augmentation_transform.transforms)
+            else:
+                # Handle cases where augmentation_transform might be a single transform function
+                final_transforms_list.append(augmentation_transform)
+
+        return transforms.Compose(final_transforms_list)
 
     def configure_dataset(self):
         """Configures the dataset by creating age and gender groups, and preparing labels based on the task."""
@@ -139,14 +171,9 @@ class Dataset(TorchDataset):
     def __getitem__(self, idx: int) -> Dict:
         """Returns a single item from the dataset at the given index."""
         image_path = self.labels[self.path_column].iloc[idx]
-        image = Image.open(image_path).convert("RGB")
+        image = Image.open(image_path)
 
-        # Apply the mandatory base transform
-        image = self.model_transform(image)
-
-        # Apply augmentations if specified
-        if self.augment:
-            image = self.augmentation_transform(image)
+        image = self.transforms(image)
 
         label = torch.tensor([self.labels.loc[idx, 'labels']], dtype=torch.float32)
         gender = torch.tensor(self.labels.loc[idx, 'gender_group'], dtype=torch.long)

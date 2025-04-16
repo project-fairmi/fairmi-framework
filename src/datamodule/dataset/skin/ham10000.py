@@ -72,6 +72,7 @@ class Ham10000(Dataset):
         dummies = pd.get_dummies(self.labels['dx'])
         self.labels = pd.concat([self.labels, dummies], axis=1)
         self.labels[self.age_column] = self.labels[self.age_column].replace(0, 1)
+        self.labels = self.labels[self.labels[self.gender_column].isin(['male', 'female'])]
         super().configure_dataset()
 
 def Ham10000Module(batch_size: int = 32,
