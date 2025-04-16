@@ -15,7 +15,7 @@ class TestODIR(BaseDatasetTest):
             'type': 'train',
             'labels_file': 'full_df.csv',
             'image_column': 'filename',
-            'transform': False,
+            'augment': False,
             'fraction': 1,
             'task': 'D',
             'num_groups': 2,

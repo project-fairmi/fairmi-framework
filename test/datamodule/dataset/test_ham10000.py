@@ -17,7 +17,7 @@ class TestHam10000(BaseDatasetTest):
             'type': 'train',
             'labels_file': 'HAM10000_metadata.csv',
             'image_column': 'image_id',
-            'transform': False,
+            'augment': False,
             'fraction': 1,
             'task': 'mel',
             'num_groups': 4,

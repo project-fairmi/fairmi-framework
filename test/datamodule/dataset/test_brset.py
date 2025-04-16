@@ -15,7 +15,7 @@ class TestBrset(BaseDatasetTest):
             'type': 'train',
             'labels_file': 'labels.csv',
             'image_column': 'image_id',
-            'transform': False,
+            'augment': False,
             'fraction': 1,
             'task': 'diabetic_retinopathy',
             'num_groups': 2,

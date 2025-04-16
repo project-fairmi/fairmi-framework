@@ -15,7 +15,7 @@ class TestCheXpert(BaseDatasetTest):
             'type': 'train',
             'labels_file': ['train.csv', 'valid.csv'],
             'image_column': None,
-            'transform': False,
+            'augment': False,
             'fraction': 1,
             'task': 'Pneumonia',
             'num_groups': 3,
