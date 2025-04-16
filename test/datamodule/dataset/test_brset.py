@@ -22,6 +22,7 @@ class TestBrset(BaseDatasetTest):
             'patient_id_column': 'patient_id',
             'age_column': 'patient_age',
             'gender_column': 'patient_sex',
+            'model_transform': None
         }
 
         default_params.update(kwargs)

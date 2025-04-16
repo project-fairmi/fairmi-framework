@@ -22,7 +22,8 @@ class TestCheXpert(BaseDatasetTest):
             'patient_id_column': 'Patient',
             'age_column': 'Age',
             'gender_column': 'Sex',
-            'path_column': 'Path'
+            'path_column': 'Path',
+            'model_transform': None
         }
 
         default_params.update(kwargs)

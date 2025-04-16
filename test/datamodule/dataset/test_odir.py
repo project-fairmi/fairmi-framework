@@ -22,6 +22,7 @@ class TestODIR(BaseDatasetTest):
             'patient_id_column': 'ID',
             'age_column': 'Patient Age',
             'gender_column': 'Patient Sex',
+            'model_transform': None
         }
 
         default_params.update(kwargs)

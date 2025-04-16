@@ -23,7 +23,8 @@ class TestHam10000(BaseDatasetTest):
             'num_groups': 4,
             'patient_id_column': 'lesion_id',
             'age_column': 'age',
-            'gender_column': 'sex'
+            'gender_column': 'sex',
+            'model_transform': None
         }
 
         default_params.update(kwargs)

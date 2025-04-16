@@ -77,8 +77,11 @@ class BaseDatasetTest:
             (torch.isnan(item['gender']).any()), "Gender should be torch.int8 or contain NaN values"
         assert (item['age'].dtype == torch.long) or \
             (torch.isnan(item['age']).any()), "Age should be torch.int8 or contain NaN values"
-        # assert (item['group'].dtype == torch.int8) or \
-        #     (torch.isnan(item['group']).any()), "Group should be torch.int8 or contain NaN values"
+
+    def test_gender(self, dataset):
+        """Test if have only 2 values in dataset gender
+        """
+        assert set(dataset.labels['gender_group'].unique()) == {0, 1}
 
     def test_dataset_nan(self, dataset, check_all=False):
         """Verifies dataset items for any NaN values.
