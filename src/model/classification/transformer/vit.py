@@ -3,11 +3,20 @@ from timm.data import resolve_data_config
 from timm.data.transforms_factory import create_transform
 import timm
 import torch
+from safetensors.torch import load_file
 
 class VisionTransformerModel(ClassificationModel):
-    def __init__(self, model_id: str = 'timm/vit_small_patch14_reg4_dinov2.lvd142m', cache_dir: str = None, **kwargs):
+    def __init__(self,
+        model_id: str = 'timm/vit_small_patch14_reg4_dinov2.lvd142m',
+        pretrained: bool = False,
+        max_epochs: int = 50,
+        weights_path: str = None,
+        **kwargs):
         super().__init__(**kwargs)
         self.model_id = model_id
+        self.pretrained = pretrained
+        self.max_epochs = max_epochs
+        self.weights_path = weights_path
         self.model = self.configure_model()
         self.transform = self.configure_model_transform()
         self.save_hyperparameters()
@@ -24,8 +33,30 @@ class VisionTransformerModel(ClassificationModel):
         model = timm.create_model(
             self.model_id,
             pretrained=False,
-            num_classes=self.num_classes
+            num_classes=self.num_classes,
         )
+
+        if self.pretrained:
+            state_dict = load_file(self.weights_path)
+            missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
+            print(f"Loaded state dictionary from '{self.weights_path}'.")
+
+            report_lines = []
+            if missing_keys:
+                report_lines.append(f"  - WARNING: Missing keys ({len(missing_keys)}): {missing_keys}")
+
+            if unexpected_keys:
+                report_lines.append(f"  - WARNING: Unexpected keys ({len(unexpected_keys)}): {unexpected_keys}")
+                # Keep the helpful note about classification head
+                report_lines.append("    (Note: Unexpected keys often occur in the classification head when num_classes differs)")
+
+            if report_lines:
+                print("State dictionary loading issues found:")
+                print("\n".join(report_lines))
+            else:
+                # Clear confirmation if everything matches
+                print("State dictionary loaded successfully with no key mismatches.")
+
         return model
     
     def configure_optimizers(self):
@@ -37,7 +68,7 @@ class VisionTransformerModel(ClassificationModel):
         # Create the optimizer for the model
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
         # Create the learning rate scheduler
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10, eta_min=0)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.max_epochs, eta_min=0)
 
         return {
             'optimizer': optimizer,
