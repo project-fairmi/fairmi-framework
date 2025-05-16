@@ -4,6 +4,7 @@ config.yml
 src/test*
 .cache
 output
+experiment
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
