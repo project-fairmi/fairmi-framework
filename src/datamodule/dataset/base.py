@@ -79,7 +79,7 @@ class Dataset(TorchDataset):
             final_transforms_list.append(model_transform_to_add)
 
         # Add augmentation transforms if enabled
-        if self.augment:
+        if self.augment and self.type == 'train':
             augmentation_transform = self._get_augmentation_transform()
             # Flatten augmentation transforms if it's a Compose object
             if isinstance(augmentation_transform, transforms.Compose):
@@ -94,6 +94,7 @@ class Dataset(TorchDataset):
         """Configures the dataset by creating age and gender groups, and preparing labels based on the task."""
         if self.age_column:
             self.labels = self.labels.dropna(subset=[self.age_column])
+            self.labels = self.labels[self.labels[self.age_column] != 0]
             self.labels['age_group'] = self._create_age_groups(self.labels[self.age_column])
         else:
             self.labels['age_group'] = np.nan
@@ -101,6 +102,7 @@ class Dataset(TorchDataset):
         if self.gender_column:
             self.labels = self.labels.dropna(subset=[self.gender_column])
             self.labels['gender_group'] = self._convert_gender_to_binary(self.labels[self.gender_column])
+            self.labels = self.labels[self.labels['gender_group'].isin([0, 1])]
         else:
             self.labels['gender_group'] = np.nan
         
@@ -153,7 +155,6 @@ class Dataset(TorchDataset):
     def _create_age_groups(self, column: pd.Series) -> pd.Series:
         """Creates age groups from the specified column."""
         column = pd.to_numeric(column, errors='coerce')
-        column.dropna(inplace=True)
         
         bin_edges = [0] + [100 / self.num_groups * i for i in range(1, self.num_groups + 1)]
         labels = list(range(self.num_groups))
@@ -164,6 +165,14 @@ class Dataset(TorchDataset):
         """Sets the group column in the dataset."""
         self.labels['group'] = labels
     
+    def get_pos_weight(self) -> float:
+        """Calculates the positive weight for the dataset."""
+        if 'labels' in self.labels.columns:
+            pos_weight = len(self.labels) / (2 * self.labels['labels'].sum())
+            return pos_weight
+        else:
+            raise ValueError("Labels column not found in dataset.")
+
     def __len__(self) -> int:
         """Returns the length of the dataset."""
         return len(self.labels)
@@ -206,14 +215,6 @@ class DataModule(pl.LightningDataModule):
         self.task = task
         self.num_groups = num_groups
         self.save_hyperparameters()
-
-        cutmix = transforms.CutMix(num_classes=1)
-        mixup = transforms.MixUp(num_classes=1) 
-        self.cutmix_or_mixup = transforms.RandomChoice([cutmix, mixup])
-
-    def collate_fn(self, batch: List[Dict[str, Any]]) -> Any:
-        """Collates a batch using either CutMix or MixUp."""
-        return self.cutmix_or_mixup(*default_collate(batch))
 
     def setup(self, stage: Optional[str] = None) -> None:
         """Sets up the dataset for training, validation, or testing."""
