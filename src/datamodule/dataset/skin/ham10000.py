@@ -68,12 +68,30 @@ class Ham10000(Dataset):
         for the diagnosis column ('dx') and then calls the superclass configuration.
         It also replaces any zero values in the age column with one to work with the
         age_groups correct in the dataset, if use 0 results in NaN groups.
+        It adds a binary column 'malignant' where benign lesions are 0 and malignant are 1.
         """
+        
+        # Create dictionary mapping diagnosis types to binary classification
+        malignant_map = {
+            'nv': 0,    # Melanocytic nevi (benign)
+            'bkl': 0,   # Benign keratosis-like lesions (benign)
+            'df': 0,    # Dermatofibroma (benign)
+            'vasc': 0,  # Vascular lesions (benign)
+            'mel': 1,   # Melanoma (malignant)
+            'bcc': 1,   # Basal cell carcinoma (malignant)
+            'akiec': 1  # Actinic keratoses and intraepithelial carcinoma (malignant)
+        }
+        
+        # Create binary classification column
+        self.labels['malignant'] = self.labels['dx'].map(malignant_map)
+        
+        # Continue with existing code
         dummies = pd.get_dummies(self.labels['dx'])
         self.labels = pd.concat([self.labels, dummies], axis=1)
         self.labels[self.age_column] = self.labels[self.age_column].replace(0, 1)
         self.labels = self.labels[self.labels[self.gender_column].isin(['male', 'female'])]
         super().configure_dataset()
+
 
 def Ham10000Module(batch_size: int = 32,
                    num_workers: int = 4,
