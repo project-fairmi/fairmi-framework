@@ -58,6 +58,10 @@ class ClassificationModel(LightningModule):
         else:
             raise ValueError("num_classes should be greater than or equal to 1.")
     
+    def update_pos_weight(self, pos_weight):
+        self.pos_weight = pos_weight
+        self.criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(self.pos_weight))
+
     def forward(self, x):
         return self.model(x)
 
