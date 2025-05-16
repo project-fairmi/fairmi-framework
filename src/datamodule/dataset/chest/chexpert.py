@@ -74,6 +74,10 @@ class CheXpert(Dataset):
           - Updating the path to remove the '/CheXpert-v1.0-small/' segment.
           - Handling uncertain labels by converting -1 to 1 (per CheXpert paper recommendation).
         """
+        # Handle uncertain labels: convert -1 to 1 if the task column exists.
+        if self.task in self.labels.columns:
+            self.labels[self.task] = self.labels[self.task].fillna(0).replace(-1, 1)
+            
         super().configure_dataset()
 
         # Preprocess the labels file to extract patient ID from study path.
@@ -88,10 +92,8 @@ class CheXpert(Dataset):
             .apply(lambda x: x.replace('/CheXpert-v1.0-small/', '/'))
         )
 
-        # Handle uncertain labels: convert -1 to 1 if the task column exists.
-        if self.task in self.labels.columns:
-            self.labels[self.task] = self.labels[self.task].fillna(0).replace(-1, 1)
-
+        # Remove rows where gender is 'Unknown'
+        self.labels = self.labels[self.labels[self.gender_column] != 'Unknown']
 
 def CheXpertModule(batch_size: int = 32,  
                    num_workers: int = 4,
