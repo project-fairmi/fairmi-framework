@@ -1,5 +1,6 @@
 import pandas as pd
 from ..base import Dataset, DataModule
+from sklearn.model_selection import train_test_split
 
 class Ham10000(Dataset):
     """HAM10000 dataset.
@@ -20,7 +21,6 @@ class Ham10000(Dataset):
                  type: str,
                  labels_file: str = 'HAM10000_metadata.csv',
                  image_column: str = 'image_id',
-                 transform: bool = False,
                  fraction: float = 1,
                  task: str = 'mel',
                  num_groups: int = 4,
@@ -82,16 +82,59 @@ class Ham10000(Dataset):
             'akiec': 1  # Actinic keratoses and intraepithelial carcinoma (malignant)
         }
         
+        label_mapping = {
+            'akiec': 0,
+            'bcc': 1, 
+            'bkl': 2,
+            'df': 3,
+            'mel': 4,
+            'nv': 5,
+            'vasc': 6
+        }
+
+        # Create a 7 class classification column
+        self.labels['multi'] = pd.Categorical(self.labels['dx'])
+        self.labels['multi'] = self.labels['multi'].map(label_mapping)
+
         # Create binary classification column
         self.labels['malignant'] = self.labels['dx'].map(malignant_map)
         
         # Continue with existing code
-        dummies = pd.get_dummies(self.labels['dx'])
-        self.labels = pd.concat([self.labels, dummies], axis=1)
         self.labels[self.age_column] = self.labels[self.age_column].replace(0, 1)
         self.labels = self.labels[self.labels[self.gender_column].isin(['male', 'female'])]
         super().configure_dataset()
 
+    def split(self):
+        # Identify lesions with only one image (unique lesions)
+        lesion_counts = self.labels.groupby(self.patient_id_column)['image_id'].count()
+        unique_lesions = set(lesion_counts[lesion_counts == 1].index)
+
+        # Mark whether each row corresponds to a unique lesion
+        self.labels['is_unique'] = self.labels[self.patient_id_column].isin(unique_lesions)
+
+        # Split unique lesions into train/validation sets
+        unique_data = self.labels[self.labels['is_unique']]
+        _, val_data = train_test_split(
+            unique_data, 
+            test_size=0.2, 
+            random_state=101, 
+            stratify=unique_data['labels']
+        )
+
+        # Create validation image IDs set for efficient lookup
+        val_image_ids = set(val_data['image_id'])
+
+        # Assign final dataset based on type
+        if self.type == 'train':
+            # Keep only training images (exclude validation images)
+            self.labels = self.labels[~self.labels['image_id'].isin(val_image_ids)].reset_index(drop=True)
+            if self.fraction < 1.0:
+                # Amostragem estratificada para manter distribuição
+                self.labels = self.labels.groupby('labels').apply(
+                    lambda x: x.sample(frac=self.fraction, random_state=42)
+                ).reset_index(drop=True)
+        elif self.type in ['val', 'test', 'eval']:
+            self.labels = val_data.reset_index(drop=True)
 
 def Ham10000Module(batch_size: int = 32,
                    num_workers: int = 4,

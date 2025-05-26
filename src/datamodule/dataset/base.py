@@ -1,4 +1,4 @@
-from typing import List, Type, Optional, Dict, Union, Any
+from typing import List, Type, Optional, Dict, Union
 import lightning as pl
 import torch
 from torch.utils.data import DataLoader, Dataset as TorchDataset
@@ -8,13 +8,14 @@ from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 import pandas as pd
 import re
 import numpy as np
-from torch.utils.data import default_collate
 from PIL import Image
+from sklearn.model_selection import train_test_split
+from torch.utils.data import WeightedRandomSampler
 
 RANDOM_SEED = 42
 TRAIN_SPLIT = 0.6
-VAL_SPLIT = 0.1
-TEST_SPLIT = 0.3
+VAL_SPLIT = 0.2
+TEST_SPLIT = 0.2
 
 class Dataset(TorchDataset):
     """Base dataset for loading and processing data for machine learning tasks."""
@@ -55,7 +56,9 @@ class Dataset(TorchDataset):
         """Returns the augmentation transformation pipeline."""
         # Define augmentations here. Using RandAugment as before.
         return transforms.Compose([
-            transforms.RandAugment(num_ops=4)
+            # transforms.RandAugment(num_ops=8)
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(brightness=0.1, contrast=0.1, hue=0.1),
         ])
 
     def _get_transforms(self) -> transforms.Compose:
@@ -120,24 +123,53 @@ class Dataset(TorchDataset):
             self.path_column = 'path'
 
     def split(self):
-        """Splits the dataset into training, validation, and test sets based on patient IDs."""
+        """
+            Splits the dataset into training, validation, and test sets based on patient IDs
+            with proper stratification. Returns all three splits at once.
+            
+            Args:
+                labels_df: DataFrame with metadata and labels
+                patient_id_column: Column name for patient IDs
+                label_column: Column name for the target labels
+                
+            Returns:
+                train_df, val_df, test_df: The three splits as DataFrames
+        """
         np.random.seed(RANDOM_SEED)
 
         patients = self.labels[self.patient_id_column].unique()
         np.random.shuffle(patients)
 
-        train_size = int(TRAIN_SPLIT * len(patients))
-        validation_size = int(VAL_SPLIT * len(patients))
-        
-        train_patients = patients[:train_size]
-        remaining_patients = patients[train_size:]
+        patient_df = self.labels.groupby(self.patient_id_column)['labels'].agg(
+             lambda x: x.value_counts().index[0]  # classe mais comum
+        ).reset_index()
 
-        validation_patients = remaining_patients[:validation_size]
-        test_patients = remaining_patients[validation_size:]
+        train_patients, remaining_patients = train_test_split(
+            patient_df[self.patient_id_column],
+            test_size=(1 - TRAIN_SPLIT),
+            random_state=RANDOM_SEED,
+            stratify=patient_df['labels']
+        )
+
+        remaining_df = patient_df[patient_df[self.patient_id_column].isin(remaining_patients)]
+        val_ratio = VAL_SPLIT / (1 - TRAIN_SPLIT)
+            
+        validation_patients, test_patients = train_test_split(
+            remaining_df[self.patient_id_column],
+            test_size=(1 - val_ratio),
+            random_state=RANDOM_SEED,
+            stratify=remaining_df['labels']
+        )
 
         if self.type == 'train':    
-            self.labels = self.labels[self.labels[self.patient_id_column].isin(train_patients)].reset_index(drop=True)
-            self.labels = self.labels.sample(frac=self.fraction).reset_index(drop=True)
+            self.labels = self.labels[self.labels[self.patient_id_column].isin(train_patients)]
+            if self.fraction < 1.0:
+                # Amostragem estratificada para manter distribuição
+                self.labels = self.labels.groupby('labels').apply(
+                    lambda x: x.sample(frac=self.fraction, random_state=RANDOM_SEED)
+                ).reset_index(drop=True)
+            else:
+                self.labels = self.labels.reset_index(drop=True)
         elif self.type == 'val':
             self.labels = self.labels[self.labels[self.patient_id_column].isin(validation_patients)].reset_index(drop=True)
         elif self.type in ['test', 'eval']:
@@ -164,14 +196,6 @@ class Dataset(TorchDataset):
     def set_group(self, labels: List[int]):
         """Sets the group column in the dataset."""
         self.labels['group'] = labels
-    
-    def get_pos_weight(self) -> float:
-        """Calculates the positive weight for the dataset."""
-        if 'labels' in self.labels.columns:
-            pos_weight = len(self.labels) / (2 * self.labels['labels'].sum())
-            return pos_weight
-        else:
-            raise ValueError("Labels column not found in dataset.")
 
     def __len__(self) -> int:
         """Returns the length of the dataset."""
@@ -184,7 +208,7 @@ class Dataset(TorchDataset):
 
         image = self.transforms(image)
 
-        label = torch.tensor([self.labels.loc[idx, 'labels']], dtype=torch.float32)
+        label = torch.tensor(self.labels.loc[idx, 'labels'], dtype=torch.long)
         gender = torch.tensor(self.labels.loc[idx, 'gender_group'], dtype=torch.long)
         age = torch.tensor(self.labels.loc[idx, 'age_group'], dtype=torch.long)
         group = self.labels.loc[idx, 'group']

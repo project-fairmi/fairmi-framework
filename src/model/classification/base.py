@@ -4,7 +4,7 @@ from torch import nn
 import torch
 
 class ClassificationModel(LightningModule):
-    def __init__(self,num_age_groups: int, num_classes: int = 1, learning_rate: float = 0.0001,
+    def __init__(self,num_age_groups: int, num_classes: int = 2, learning_rate: float = 0.0001,
                 sync_dist: bool = True, weight_decay: float = 0.0001,
                 pos_weight: float = 1.0):
         super().__init__()
@@ -52,16 +52,15 @@ class ClassificationModel(LightningModule):
             torch.nn.Module: The created loss function.
         """
         if self.num_classes == 1:
+            print("bce")
             return nn.BCEWithLogitsLoss()
+        
         elif self.num_classes > 1:
+            print("entrou")
             return nn.CrossEntropyLoss()
         else:
             raise ValueError("num_classes should be greater than or equal to 1.")
     
-    def update_pos_weight(self, pos_weight):
-        self.pos_weight = pos_weight
-        self.criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(self.pos_weight))
-
     def forward(self, x):
         return self.model(x)
 
@@ -99,7 +98,7 @@ class ClassificationModel(LightningModule):
         loss = self.compute_loss(y_hat, batch.get('label'), 'val')
 
         self.compute_metrics(y_hat, batch.get('label'), 'val')
-        self.compute_demographic_metrics(y_hat, batch, 'val')
+        # self.compute_demographic_metrics(y_hat, batch, 'val')
         
         return loss
     

@@ -12,12 +12,14 @@ class VisionTransformerModel(ClassificationModel):
         pretrained: bool = False,
         max_epochs: int = 50,
         weights_path: str = None,
+        freeze_backbone: bool = False,
         **kwargs):
         super().__init__(**kwargs)
         self.model_id = model_id
         self.pretrained = pretrained
         self.max_epochs = max_epochs
         self.weights_path = weights_path
+        self.freeze_backbone = freeze_backbone
         self.model = self.configure_model()
         self.transform = self.configure_model_transform()
         self.save_hyperparameters()
@@ -57,25 +59,44 @@ class VisionTransformerModel(ClassificationModel):
             else:
                 # Clear confirmation if everything matches
                 print("State dictionary loaded successfully with no key mismatches.")
+        
+        if self.freeze_backbone:
+            for param in model.parameters():
+                param.requires_grad = False
 
+            # Unfreeze the classification head
+            for param in model.head.parameters():
+                param.requires_grad = True
+
+            trainable_params = [name for name, param in model.named_parameters() if param.requires_grad]
+            print(f"Trainable parameters: {trainable_params}")
+            
         return model
-    
+
     def configure_optimizers(self):
         """Creates the optimizer for the model.
 
         Returns:
             torch.optim.Optimizer: The created optimizer.
         """
+        beta_2 = 0.999
         # Create the optimizer for the model
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+        optimizer = torch.optim.AdamW(
+            self.parameters(),
+            lr=self.learning_rate,
+            weight_decay=self.weight_decay,
+            betas=(0.9, beta_2),
+        )
+
+
 
         # --- PyTorch Linear Warmup + Cosine Annealing Scheduler ---
         # Configuration based on found LR from lr_find
-        warmup_epochs = 5  # Keep the original warmup duration (adjust if max_epochs is very short/long)
+        warmup_epochs = int(0.1 * self.max_epochs)
         total_epochs = self.max_epochs
-        peak_lr = self.learning_rate # Target LR after warmup (should be ~3.02e-6 based on lr_find)
-        initial_lr = peak_lr / 100.0 # Start warmup at 1/100th of peak LR
-        eta_min = peak_lr / 100.0    # Allow annealing down to 1/100th of peak LR
+        peak_lr = self.learning_rate 
+        initial_lr = peak_lr / 100.0
+        eta_min = peak_lr / 100.0
 
         print(f"Scheduler Config: peak_lr={peak_lr:.2e}, initial_lr={initial_lr:.2e}, eta_min={eta_min:.2e}, warmup={warmup_epochs}, total={total_epochs}")
 
