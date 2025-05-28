@@ -95,6 +95,22 @@ class CheXpert(Dataset):
         # Remove rows where gender is 'Unknown'
         self.labels = self.labels[self.labels[self.gender_column] != 'Unknown']
 
+    def split(self) -> None:
+        """Splits the dataset into training, validation, and test sets.
+
+        This method assigns samples to 'train' or 'valid' based on the presence
+        of 'train' or 'valid' in the path column.
+        """
+        if self.type == 'train':
+            self.labels = self.labels[self.labels[self.path_column].str.contains('train', case=False)]
+            if self.fraction < 1.0:
+                self.labels = self.labels.groupby('labels').apply(
+                    lambda x: x.sample(frac=self.fraction, random_state=42)
+                ).reset_index(drop=True)
+        elif self.type == 'valid' or self.type == 'val':
+            self.labels = self.labels[self.labels[self.path_column].str.contains('valid', case=False)]
+
+
 def CheXpertModule(batch_size: int = 32,  
                    num_workers: int = 4,
                    **kwargs) -> DataModule:
