@@ -28,7 +28,7 @@ class ClassificationModel(LightningModule):
 
     def _init_metrics(self):
         """Initializes the metrics for the model.
-
+        
         This method should be overridden in subclasses to define specific metrics.
         """
         if self.num_classes == 1:
@@ -52,12 +52,12 @@ class ClassificationModel(LightningModule):
             torch.nn.Module: The created loss function.
         """
         if self.num_classes == 1:
-            print("bce")
             return nn.BCEWithLogitsLoss()
         
         elif self.num_classes > 1:
-            print("entrou")
-            return nn.CrossEntropyLoss()
+            return nn.CrossEntropyLoss(
+                label_smoothing=0.1
+            )
         else:
             raise ValueError("num_classes should be greater than or equal to 1.")
     
