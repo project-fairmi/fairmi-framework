@@ -12,14 +12,14 @@ class VisionTransformerModel(ClassificationModel):
         pretrained: bool = False,
         max_epochs: int = 50,
         weights_path: str = None,
-        freeze_backbone: bool = False,
+        freeze_layers: int = 0,  # Parameter to specify number of layers to freeze
         **kwargs):
         super().__init__(**kwargs)
         self.model_id = model_id
         self.pretrained = pretrained
         self.max_epochs = max_epochs
         self.weights_path = weights_path
-        self.freeze_backbone = freeze_backbone
+        self.freeze_layers = freeze_layers  # Store the parameter
         self.model = self.configure_model()
         self.transform = self.configure_model_transform()
         self.save_hyperparameters()
@@ -60,17 +60,36 @@ class VisionTransformerModel(ClassificationModel):
                 # Clear confirmation if everything matches
                 print("State dictionary loaded successfully with no key mismatches.")
         
-        if self.freeze_backbone:
+        # Handle layer freezing based on freeze_layers parameter
+        if self.freeze_layers > 0:
+            # Freeze all parameters first
             for param in model.parameters():
                 param.requires_grad = False
 
-            # Unfreeze the classification head
-            for param in model.head.parameters():
-                param.requires_grad = True
+            if hasattr(model, 'blocks'):
+                # For Vision Transformers, the blocks are typically named 'block.N'
+                num_blocks = len(model.blocks)
+
+                if self.freeze_layers == 1:
+                    # Only unfreeze the classification head
+                    for param in model.head.parameters():
+                        param.requires_grad = True
+                else:
+                    # Unfreeze the classification head and the last (freeze_layers - 1) blocks
+                    layers_to_unfreeze = min(self.freeze_layers - 1, num_blocks)
+
+                    # Unfreeze the classification head
+                    for param in model.head.parameters():
+                        param.requires_grad = True
+
+                    # Unfreeze the specified number of blocks from the end
+                    for i in range(num_blocks - layers_to_unfreeze, num_blocks):
+                        for param in model.blocks[i].parameters():
+                            param.requires_grad = True
 
             trainable_params = [name for name, param in model.named_parameters() if param.requires_grad]
             print(f"Trainable parameters: {trainable_params}")
-            
+
         return model
 
     def configure_optimizers(self):

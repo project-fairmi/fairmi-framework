@@ -3,9 +3,13 @@ import uuid
 import importlib
 
 import yaml
+from torchvision import transforms
 from src.model.classification import VisionTransformerModel
 from src.config import config
 from src.scaling_laws.utils.metric import Metric
+from src.datamodule.dataset.vision import OdirModule, BrsetModule
+from src.datamodule.dataset.chest import CheXpertModule
+from src.datamodule.dataset.skin import Ham10000Module
 
 import lightning as pl
 import os
@@ -24,8 +28,8 @@ class TestModelExperiment:
         self.name = name
         self.model_files = self._find_model_files()
         self.model_data_percentage = self._find_model_data('fraction')
-        self.model_data_pretain = self._find_model_data('pretrain')
-        self.model_num_groups = self._find_model_data('num_groups')[0]
+        self.model_data_pretain = self._find_model_data('model_id')
+        self.model_num_groups = next(iter(self._find_model_data('num_groups').values())) # return a dict, but the value is the same in the experiments
         self.dataset = dataset
         self.datamodule = self._load_datamodule(dataset)
         self.id = str(uuid.uuid4())
@@ -68,30 +72,36 @@ class TestModelExperiment:
         Returns:
             DataModule: The loaded dataset module.
         """
+        # Map dataset names to their corresponding DataModule classes
+        DATASET_MODULES = {
+            "brset": BrsetModule,
+            "odir": OdirModule,
+            "chexpert": CheXpertModule,
+            "ham10000": Ham10000Module,
+        }
+
         # Get dataset configuration from config
         dataset_config = config['data'][name]
 
-        # Construct the module path and class name
-        module_path = f"src.datamodule.dataset.vision.{name.capitalize()}Module"
-        class_name = f"{name.capitalize()}Module"
+        # Validate dataset choice
+        if name not in DATASET_MODULES:
+            raise ValueError(f"Invalid dataset '{name}'. Choose from {list(DATASET_MODULES.keys())}")
 
-        try:
-            # Dynamically import the module
-            module = importlib.import_module(module_path)
+        # Instantiate the correct DataModule based on the dataset argument
+        datamodule_class = DATASET_MODULES[name]
+        datamodule = datamodule_class(
+            data_dir=dataset_config['data_path'],
+            image_data_dir=dataset_config['image_data_path'],
+            batch_size=32,  # Default batch size, can be adjusted
+            model_transform=None,  # No model transform available here
+            augment_train=False,  # No augmentation by default
+            fraction=1.0,  # Use full dataset by default
+            num_workers=dataset_config.get('num_workers', 4),  # Default to 4 workers if not specified
+            task=dataset_config['task'],
+            num_groups=self.model_num_groups
+        )
 
-            # Get the module class
-            module_class = getattr(module, class_name)
-
-            # Create the datamodule instance with parameters from config
-            return module_class(
-                data_dir=dataset_config['data_path'],
-                image_data_dir=dataset_config['image_data_path'],
-                transform=False,
-                task=dataset_config['task'],
-                num_groups=self.model_num_groups
-            )
-        except (ImportError, AttributeError) as e:
-            raise ImportError(f"Could not load dataset module for '{name}': {e}")
+        return datamodule
 
     def load_model(self, model_path):
         """Loads a PyTorch model from a .ckpt file.

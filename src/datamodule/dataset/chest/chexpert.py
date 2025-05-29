@@ -107,7 +107,7 @@ class CheXpert(Dataset):
                 self.labels = self.labels.groupby('labels').apply(
                     lambda x: x.sample(frac=self.fraction, random_state=42)
                 ).reset_index(drop=True)
-        elif self.type == 'valid' or self.type == 'val':
+        elif self.type == 'val' or self.type in ['test', 'eval']:
             self.labels = self.labels[self.labels[self.path_column].str.contains('valid', case=False)]
 
 
