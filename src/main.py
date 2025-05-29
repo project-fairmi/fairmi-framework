@@ -65,7 +65,7 @@ def main(args: argparse.Namespace):
     checkpoint_callback = ModelCheckpoint(
         monitor='val_auroc',
         filename='{epoch}-{val_auroc:.2f}',
-        save_top_k=3,
+        save_top_k=1,
         mode='max',
         save_weights_only=True # Save only weights to save space
     )
@@ -73,7 +73,6 @@ def main(args: argparse.Namespace):
     # Configure the PyTorch Lightning Trainer
     print("Configuring Trainer...")
     trainer = pl.Trainer(
-        precision="16-true", # Consider making this configurable via args/config
         max_epochs=args.max_epochs,
         logger=TensorBoardLogger('output/logs/', name=args.name),
         callbacks=[checkpoint_callback],
@@ -96,7 +95,9 @@ def main(args: argparse.Namespace):
             pretrained=args.pretrained,
             max_epochs=args.max_epochs,
             weights_path=config['model'][model_name]['weights_path'],
-         )
+            freeze_layers=args.freeze_layers,
+        )
+        
 
     # Instantiate the correct DataModule based on the dataset argument
     print(f"Instantiating DataModule for dataset: {args.dataset}")
@@ -128,10 +129,10 @@ def main(args: argparse.Namespace):
         if args.tune:
             print("Starting learning rate tuning...")
             tuner = Tuner(trainer)
-            tuner.scale_batch_size(model, datamodule=datamodule, mode="power", init_val=4)
-            # lr_finder_results = tuner.lr_find(model, datamodule=datamodule)
-            # suggested_lr = model.learning_rate
-            # print(f"Suggested learning rate: {suggested_lr}; Suggestion from results: {lr_finder_results.suggestion()}")
+            # tuner.scale_batch_size(model, datamodule=datamodule, mode="power", init_val=4)
+            lr_finder_results = tuner.lr_find(model, datamodule=datamodule)
+            suggested_lr = model.learning_rate
+            print(f"Suggested learning rate: {suggested_lr}; Suggestion from results: {lr_finder_results.suggestion()}")
 
         print("Starting training...")
         trainer.fit(
@@ -165,22 +166,21 @@ if __name__ == "__main__":
     parser.add_argument('--num_nodes', type=int, default=config['training']['num_nodes'], help='Number of nodes for distributed training.')
     parser.add_argument('--strategy', type=str, default=config['training']['strategy'], help='Distributed training strategy (e.g., ddp, dp).')
     parser.add_argument('--accumulate_grad_batches', type=int, default=config['training']['accumulate_grad_batches'], help='Number of batches to accumulate gradients before updating the model.')
+    parser.add_argument('--fraction', type=float, default=config['training']['fraction'], help='Fraction of the dataset to use for training. 1.0 means full dataset.')
+    parser.add_argument('--freeze_layers', type=int, default=config['training'].get('freeze_layers', 0), help='Number of layers to freeze (0 = no freezing, 1 = freeze all but head, 2 = freeze all but head and one more layer, etc.)')
+    
 
     # --- Data Configuration ---
     parser.add_argument('--dataset', type=str, default=config['data']['dataset'], choices=list(DATASET_MODULES.keys()), help='Select the dataset to use.')
-    # Note: data_path and image_data_path are determined internally based on the selected dataset and config.yml
-    parser.add_argument('--fraction', type=float, default=config['data']['brset']['fraction'], help='Fraction of the dataset to load (e.g., for debugging). Default applies to brset, adjust if needed.')
     parser.add_argument('--num_groups', type=int, default=config['data']['num_groups'], help='Number of demographic groups (e.g., age) for fairness analysis.')
-
+    
     # --- Model Configuration ---
     parser.add_argument('--model_name', type=str, default=config['model']['name'], help='Identifier for the specific model architecture (used with config.yml).')
     parser.add_argument('--pretrained', action='store_true', default=config['model']['pretrained'], help='Use a pretrained model. If False, train from scratch.')
+
     # --- Logging and Execution Control ---
     parser.add_argument('--name', type=str, default=config['log']['name'], help='Experiment name used for TensorBoard logging directory.')
     parser.add_argument('--test', action='store_true', help='Run in test-only mode. Requires a trained checkpoint (uses "best" by default).')
-    # Optional arguments for more control (currently commented out):
-    # parser.add_argument('--resume_from_checkpoint', type=str, help='Path to a checkpoint file to resume training.')
-    # parser.add_argument('--checkpoint_path', type=str, help='Path to a specific checkpoint file for testing.')
 
     args = parser.parse_args()
     main(args)
