@@ -15,6 +15,11 @@ import lightning as pl
 import os
 import pandas as pd
 
+class IgnoreUnknownTagsLoader(yaml.SafeLoader):
+    def ignore_unknown(self, node):
+        return None
+    
+IgnoreUnknownTagsLoader.add_constructor(None, IgnoreUnknownTagsLoader.ignore_unknown)
 class TestModelExperiment:
     def __init__(self, versions: list[int], dataset: str ='brset', name: str ='vit-fairness'):
         """Initializes the TestModelExperiment class.
@@ -47,7 +52,7 @@ class TestModelExperiment:
         for version in self.versions:
             version_dir = self._version_dir(version)
             with open(os.path.join(version_dir, 'hparams.yaml')) as f:
-                hparams = yaml.load(f, Loader=yaml.FullLoader)
+                hparams = yaml.load(f, Loader=IgnoreUnknownTagsLoader)
             model_data_percentage[version] = hparams[information]
 
         return model_data_percentage

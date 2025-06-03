@@ -2,223 +2,249 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+from typing import Literal, Optional
+from pathlib import Path
 
-class Metric:
-    def __init__(self, results_df: pd.DataFrame, num_groups: int, path: str):
+class MetricAnalyzer:
+    """Analyzes and visualizes model performance metrics with confidence intervals."""
+    
+    def __init__(self, results_df: pd.DataFrame, num_groups: int, save_path: str):
         """
-        Initialize the MetricCalculator class.
+        Initialize the MetricAnalyzer.
         
         Args:
-            results_df (pd.DataFrame): DataFrame with the results from the experiments.
-            num_groups (int): Number of groups (e.g., age or gender groups).
-            path (str): Path to save the generated plots.
+            results_df: DataFrame with experiment results
+            num_groups: Number of demographic groups
+            save_path: Directory path for saving plots
         """
-        self.results_df = results_df
+        self.results_df = results_df.copy()
         self.num_groups = num_groups
-        self.path = path
-
-    def calculate_statistics(self, column, n=3):
-        """
-        Calculate the mean, standard deviation, and 95% confidence interval for the specified column.
+        self.save_path = Path(save_path)
+        self.save_path.mkdir(parents=True, exist_ok=True)
+    
+    def _calculate_statistics(self, column: str, n: int = 3) -> pd.DataFrame:
+        """Calculate mean, std, and 95% CI for a column grouped by experimental conditions."""
+        stats = (self.results_df
+                .groupby(['version', 'fraction', 'pretrain'])[column]
+                .agg(['mean', 'std'])
+                .reset_index()
+                .sort_values('fraction'))
         
-        Parameters:
-        - column: The name of the column to calculate statistics for.
-        - n: The number of observations per group (default is 3).
+        # Calculate 95% confidence interval
+        margin_error = 1.96 * (stats['std'] / np.sqrt(n))
+        stats['ci95_hi'] = stats['mean'] + margin_error
+        stats['ci95_lo'] = stats['mean'] - margin_error
         
-        Returns:
-        - stats: DataFrame with calculated statistics.
-        """
-        stats = self.results_df.groupby(['version', 'fraction', 'pretrain'])[column].agg(['mean', 'std']).reset_index().sort_values(by='fraction')
-        stats['ci95_hi'] = stats['mean'] + 1.96 * (stats['std'] / np.sqrt(n))
-        stats['ci95_lo'] = stats['mean'] - 1.96 * (stats['std'] / np.sqrt(n))
         return stats
-
-    def plot_with_confidence_interval(self, stats, y_label, title, filename):
-        """
-        Create a line plot with confidence intervals.
-        
-        Parameters:
-        - stats: DataFrame containing statistics to plot.
-        - y_label: Label for the y-axis.
-        - title: Title of the plot.
-        - filename: Name of the file to save the plot.
-        """
+    
+    def _create_line_plot(self, stats: pd.DataFrame, y_label: str, 
+                         title: str, filename: str) -> None:
+        """Create line plot with confidence intervals."""
         plt.figure(figsize=(10, 6))
-        sns.lineplot(data=stats, x='fraction', y='mean', hue='pretrain', marker='o')
-
+        
+        # Main line plot
+        sns.lineplot(data=stats, x='fraction', y='mean', 
+                    hue='pretrain', marker='o', linewidth=2)
+        
+        # Add confidence intervals
         for pretrain in stats['pretrain'].unique():
             subset = stats[stats['pretrain'] == pretrain]
-            plt.fill_between(subset['fraction'], subset['ci95_lo'], subset['ci95_hi'], alpha=0.3)
-
-        plt.xticks([0.25, 0.5, 0.75, 1])
-        plt.xlabel('Percentage of training data')
-        plt.ylabel(y_label)
-        plt.title(title)
-        plt.savefig(f"{self.path}/{filename}", dpi=300)
-
-    def plot_data_efficiency(self, metric='auroc'):
-        """
-        Plots the AUROC with standard deviation as a line plot for each version of the model.
+            plt.fill_between(subset['fraction'], subset['ci95_lo'], 
+                           subset['ci95_hi'], alpha=0.3)
         
-        Parameters:
-        - metric: The performance metric to use, such as 'auroc'.
+        # Formatting
+        plt.xticks([0.25, 0.5, 0.75, 1.0])
+        plt.xlabel('Percentage of Training Data', fontsize=12)
+        plt.ylabel(y_label, fontsize=12)
+        plt.title(title, fontsize=14)
+        plt.grid(True, alpha=0.3)
+
+        # Optimize axis limits
+        y_max = stats['mean'].max() + (stats['mean'].max() * 0.1)
+        x_max = stats['fraction'].max() + (stats['fraction'].max() * 0.1)
+        plt.ylim(0, y_max)
+        plt.xlim(0, x_max)
+
+        plt.tight_layout()
+        
+        # Save plot
+        plt.savefig(self.save_path / filename, dpi=300, bbox_inches='tight')
+        plt.close()
+    
+    def _calculate_max_min(self, group_type: str, metric: str = 'auroc') -> tuple[float, float]:
+        """Calculate max and min values for a group."""
+        if group_type == 'gender':
+            max_val = max(
+                self.results_df[f'test_gender_{metric}_0'],
+                self.results_df[f'test_gender_{metric}_1']
+            )
+            min_val = min(
+                self.results_df[f'test_gender_{metric}_0'],
+                self.results_df[f'test_gender_{metric}_1']
+            )
+            return max_val, min_val
+        elif group_type == 'age':
+            age_columns = [f'test_age_{metric}_{i}' for i in range(self.num_groups)]
+            max_val = self.results_df[age_columns].max(axis=1)
+            min_val = self.results_df[age_columns].min(axis=1)
+            return max_val.max(), min_val.min()
+        else:
+            raise ValueError("group_type must be 'gender' or 'age'")
+
+    def _calculate_gap(self, gap_type: Literal['gender', 'age'],
+                      metric: str = 'auroc', as_percentage: bool = True) -> str:
         """
-        stats = self.calculate_statistics(f'test_{metric}')
-        self.plot_with_confidence_interval(
-            stats,
-            y_label='AUROC',
-            title='AUROC by Fraction with 95% Confidence Interval',
+        Calculate performance gap between demographic groups.
+
+        Args:
+            gap_type: The type of gap to calculate ('gender' or 'age').
+            metric: The metric to use for gap calculation. Default is 'auroc'.
+            as_percentage: Whether to return the gap as a percentage. Default is True.
+
+        Returns:
+            The name of the column containing the gap values.
+        """
+        gap_column = f'gap_{gap_type}'
+        fraction_column = f'frac_{gap_type}'
+
+        # Calculate max and min values using the _calculate_max_min function
+        max_val, min_val = self._calculate_max_min(gap_type, metric)
+
+        # Calculate gap and fraction
+        if as_percentage:
+            gap = abs(max_val - min_val) * 100
+        else:
+            gap = abs(max_val - min_val)
+
+        fraction = min_val / max_val
+
+        # Store results in the DataFrame
+        self.results_df[gap_column] = gap
+        self.results_df[fraction_column] = fraction
+
+        return gap_column
+    
+    def plot_data_efficiency(self, metric: str = 'auroc') -> None:
+        """Plot model performance vs training data fraction."""
+        stats = self._calculate_statistics(f'test_{metric}')
+        self._create_line_plot(
+            stats=stats,
+            y_label=metric.upper(),
+            title=f'{metric.upper()} vs Training Data Fraction',
             filename='data_efficiency.png'
         )
-
-    def plot_gap_efficiency(self, gap_type, metric='auroc'):
-        """
-        Plots the gap for gender or age AUROC with a 95% confidence interval.
+    
+    def plot_gap_efficiency(self, gap_type: Literal['gender', 'age'], 
+                           metric: str = 'auroc') -> None:
+        """Plot demographic gap vs training data fraction."""
+        gap_column = self._calculate_gap(gap_type, metric)
+        stats = self._calculate_statistics(gap_column)
         
-        Parameters:
-        - gap_type: 'gender' or 'age'. Determines which gap to calculate and plot.
-        - metric: The performance metric to use, such as 'auroc'.
-        """
-        gap_column = self.calculate_gap(gap_type, metric)
-        stats = self.calculate_statistics(gap_column)
-        self.plot_with_confidence_interval(
-            stats,
-            y_label=f'Gap {gap_type.capitalize()} % ({metric})',
-            title=f'Gap {gap_type.capitalize()} % ({metric}) by Fraction with 95% Confidence Interval',
+        self._create_line_plot(
+            stats=stats,
+            y_label=f'{gap_type.title()} Gap % ({metric.upper()})',
+            title=f'{gap_type.title()} Performance Gap vs Training Data',
             filename=f'gap_efficiency_{gap_type}.png'
         )
-
-    def calculate_max_age(self, metric):
-        """
-        Calculate the maximum value for age groups based on the provided metric.
+    
+    def plot_gap_vs_performance(self, gap_type: Literal['gender', 'age'], 
+                               metric: str = 'auroc') -> None:
+        """Plot performance vs demographic gap scatter plot."""
+        gap_column = self._calculate_gap(gap_type, metric)
         
-        Parameters:
-        - metric: The performance metric to use, such as 'auroc'.
+        # Calculate statistics for both metrics
+        stats = (self.results_df
+                .groupby(['version', 'pretrain', 'fraction'])
+                [[f'test_{metric}', gap_column]]
+                .agg(['mean', 'std'])
+                .reset_index())
         
-        Returns:
-        - max_age: The maximum value across age groups.
-        """
-        columns = [f'test_age_{metric}_{i}' for i in range(self.num_groups)]
-        max_age = self.results_df[columns].max(axis=1)
-        return max_age
-
-    def calculate_min_age(self, metric):
-        """
-        Calculate the minimum value for age groups based on the provided metric.
-        
-        Parameters:
-        - metric: The performance metric to use, such as 'auroc'.
-        
-        Returns:
-        - min_age: The minimum value across age groups.
-        """
-        columns = [f'test_age_{metric}_{i}' for i in range(self.num_groups)]
-        min_age = self.results_df[columns].min(axis=1)
-        return min_age
-
-    def calculate_gap(self, gap_type, metric):
-        """
-        Calculate the gap for gender or age based on the provided metric.
-        
-        Parameters:
-        - gap_type: 'gender' or 'age'. Determines which gap to calculate.
-        - metric: The performance metric to use, such as 'auroc'.
-        
-        Returns:
-        - gap_column: The name of the new column added to results_df.
-        """
-        if gap_type == 'gender':
-            gap_column = 'gap_gender'
-            self.results_df[gap_column] = abs(self.results_df[f'test_gender_{metric}_0'] - self.results_df[f'test_gender_{metric}_1']) * 100
-        elif gap_type == 'age':
-            gap_column = 'gap_age'
-            columns = [f'test_age_{metric}_{i}' for i in range(self.num_groups)]
-            self.results_df[gap_column] = (
-                self.results_df[columns].max(axis=1) -
-                self.results_df[columns].min(axis=1)
-            ) * 100
-        else:
-            raise ValueError("gap_type must be either 'gender' or 'age'")
-        
-        return gap_column
-
-    def plot_gap_vs_metric(self, gap_type, metric='auroc'):
-        """
-        Plots the test AUROC against the gap for gender or age with a 95% confidence interval.
-        
-        Parameters:
-        - gap_type: 'gender' or 'age'. Determines which gap to calculate and plot.
-        - metric: The performance metric to use, such as 'auroc'.
-        """
-        gap_column = self.calculate_gap(gap_type, metric)
-
-        # Group by 'version', 'pretrain', and 'fraction' and calculate the mean and std for the metric and gap
-        stats = self.results_df.groupby(['version', 'pretrain', 'fraction'])[[f'test_{metric}', gap_column]].agg(['mean', 'std']).reset_index()
-
-        # Create the plot
         plt.figure(figsize=(10, 6))
         sns.scatterplot(
             data=stats,
-            y=(gap_column, 'mean'),
             x=(f'test_{metric}', 'mean'),
+            y=(gap_column, 'mean'),
             hue='fraction',
             style='pretrain',
-            marker='o',
-            palette='spring'
+            s=100,
+            palette='viridis'
         )
-
-        plt.xlabel(f'{metric.upper()}')
-        plt.ylabel(f'Gap {gap_type.capitalize()} % ({metric.upper()})')
-        plt.title(f'{metric.upper()} by Gap {gap_type.capitalize()} {metric.upper()} with 95% Confidence Interval')
-        plt.legend(loc='lower left')
-        plt.savefig(f"{self.path}/gap_vs_metric_{gap_type}.png", dpi=300)
-
-    def plot_max_min(self, type, metric='auroc'):
-        """
-        Plots the maximum and minimum age group performance based on the provided metric.
         
-        Parameters:
-        - metric: The performance metric to use, such as 'auroc'.
-        """
-        if type == 'age':
-            max = self.calculate_max_age(metric)
-            min = self.calculate_min_age(metric)
-            x_label = 'Max Age AUROC'
-            y_label = 'Min Age AUROC'
-        elif type == 'gender':
-            max = 'test_gender_auroc_0'
-            min = 'test_gender_auroc_1'
-            x_label = 'Female (AUROC)'
-            y_label = 'Male (AUROC)'
-        stats = self.results_df.groupby(['version', 'fraction', 'pretrain'])[[max, min]].agg(['mean', 'std']).reset_index().sort_values(by='fraction')
+        plt.xlabel(f'{metric.upper()}', fontsize=12)
+        plt.ylabel(f'{gap_type.title()} Gap % ({metric.upper()})', fontsize=12)
+        plt.title(f'Performance vs {gap_type.title()} Gap', fontsize=14)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        
+        plt.savefig(self.save_path / f'gap_vs_performance_{gap_type}.png', 
+                   dpi=300, bbox_inches='tight')
+        plt.close()
+    
+    def plot_group_comparison(self, group_type: Literal['gender', 'age'],
+                             metric: str = 'auroc') -> None:
+        """Plot max vs min group performance."""
+        # Calculate max and min values using the _calculate_max_min function
+        max_vals, min_vals = self._calculate_max_min(group_type, metric)
 
+        # Set labels based on group type
+        if group_type == 'age':
+            x_label, y_label = f'Max Age {metric.upper()}', f'Min Age {metric.upper()}'
+        elif group_type == 'gender':
+            x_label, y_label = f'Female {metric.upper()}', f'Male {metric.upper()}'
+        else:
+            raise ValueError("group_type must be 'gender' or 'age'")
+        
+        # Create temporary DataFrame for grouping
+        temp_df = self.results_df.copy()
+        temp_df['max_vals'] = max_vals
+        temp_df['min_vals'] = min_vals
+        
+        stats = (temp_df
+                .groupby(['version', 'fraction', 'pretrain'])
+                [['max_vals', 'min_vals']]
+                .agg(['mean', 'std'])
+                .reset_index())
+        
         plt.figure(figsize=(10, 6))
-
-        # Create the scatter plot with max AUROC values on the X-axis and min on the Y-axis
-        sns.scatterplot(data=stats, x=(max, 'mean'), y=(min, 'mean'),
-                                    style='pretrain',
-                                    hue='fraction', palette='spring',
-                                    s=200)
-
-        # Add identity line
-        limits = [min(stats[(max, 'mean')].min(), stats[(min, 'mean')].min()),
-                max(stats[(max, 'mean')].max(), stats[(min, 'mean')].max())]
-
-        plt.plot(limits, limits, 'k--', lw=2)  # Identity line
-
-        # Set grid and labels
-        plt.grid(True, linestyle=':', color='gray')
-        plt.xlabel(x_label, fontsize=16)
-        plt.ylabel(y_label, fontsize=16)
-        plt.legend(loc='lower right', fontsize=14, title_fontsize=12)
-        plt.savefig(f"{self.path}/max_min_{type}.png", dpi=300)
+        sns.scatterplot(
+            data=stats,
+            x=('max_vals', 'mean'),
+            y=('min_vals', 'mean'),
+            hue='fraction',
+            style='pretrain',
+            s=150,
+            palette='viridis'
+        )
         
-    def run_metrics(self):
-        """
-        Runs all the metric calculations and plots.
-        """
-        self.plot_data_efficiency()
-        self.plot_gap_efficiency('age')
-        self.plot_gap_efficiency('gender')
-        self.plot_gap_vs_metric('age')
-        self.plot_gap_vs_metric('gender')
+        # Add identity line
+        lims = [
+            min(stats[('max_vals', 'mean')].min(), stats[('min_vals', 'mean')].min()),
+            max(stats[('max_vals', 'mean')].max(), stats[('min_vals', 'mean')].max())
+        ]
+        plt.plot(lims, lims, 'k--', alpha=0.7, linewidth=2, label='Perfect Equality')
+        
+        plt.xlabel(x_label, fontsize=12)
+        plt.ylabel(y_label, fontsize=12)
+        plt.title(f'{group_type.title()} Group Performance Comparison', fontsize=14)
+        plt.grid(True, alpha=0.3)
+        plt.legend(fontsize=10)
+        plt.tight_layout()
+        
+        plt.savefig(self.save_path / f'group_comparison_{group_type}.png', 
+                   dpi=300, bbox_inches='tight')
+        plt.close()
+    
+    def generate_all_plots(self, metric: str = 'auroc') -> None:
+        """Generate all analysis plots."""
+        print("Generating plots...")
+        
+        self.plot_data_efficiency(metric)
+        print("✓ Data efficiency plot created")
+        
+        for gap_type in ['age', 'gender']:
+            self.plot_gap_efficiency(gap_type, metric)
+            self.plot_gap_vs_performance(gap_type, metric)
+            self.plot_group_comparison(gap_type, metric)
+            print(f"✓ {gap_type.title()} analysis plots created")
+        
+        print(f"All plots saved to: {self.save_path}")

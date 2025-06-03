@@ -58,8 +58,7 @@ def main(args: argparse.Namespace):
     num_classes = dataset_config['num_classes']
 
     # Instantiate model first to get its transform
-    model_name = config['model']['name']
-    model_id = config['model'][model_name]['id']
+    model_id = config['model'][args.model_name]['id']
 
     # Configure checkpointing
     checkpoint_callback = ModelCheckpoint(
@@ -94,7 +93,7 @@ def main(args: argparse.Namespace):
             model_id=model_id,
             pretrained=args.pretrained,
             max_epochs=args.max_epochs,
-            weights_path=config['model'][model_name]['weights_path'],
+            weights_path=config['model'][args.model_name]['weights_path'],
             freeze_layers=args.freeze_layers,
         )
         
@@ -139,14 +138,6 @@ def main(args: argparse.Namespace):
             model,
             datamodule=datamodule,
             # ckpt_path=args.resume_from_checkpoint # Uncomment and add arg if resuming needed
-        )
-        print("Training finished.")
-        print("Running final test evaluation using the best checkpoint...")
-        # The trainer implicitly uses the best checkpoint after fitting when ckpt_path="best"
-        trainer.test(
-            model=model, # The model object holds the best weights after .fit()
-            datamodule=datamodule,
-            ckpt_path="best"
         )
 
 if __name__ == "__main__":

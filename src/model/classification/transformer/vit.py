@@ -37,6 +37,8 @@ class VisionTransformerModel(ClassificationModel):
             self.model_id,
             pretrained=False,
             num_classes=self.num_classes,
+            drop_path_rate=0,
+            drop_rate=0
         )
 
         if self.pretrained:
@@ -115,7 +117,7 @@ class VisionTransformerModel(ClassificationModel):
         total_epochs = self.max_epochs
         peak_lr = self.learning_rate 
         initial_lr = peak_lr / 100.0
-        eta_min = peak_lr / 100.0
+        eta_min = peak_lr / 50.0
 
         print(f"Scheduler Config: peak_lr={peak_lr:.2e}, initial_lr={initial_lr:.2e}, eta_min={eta_min:.2e}, warmup={warmup_epochs}, total={total_epochs}")
 

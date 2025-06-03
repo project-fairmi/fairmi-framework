@@ -179,10 +179,14 @@ class ClassificationModel(LightningModule):
         self._compute_metrics_for_group(y_hat, batch.get('label'), batch.get('gender'), 'gender', mode)
         self._compute_metrics_for_group(y_hat, batch.get('label'), batch.get('age'), 'age', mode)
 
-        gender_fairness = self.gender_fairness(y_hat, batch.get('label').int(), batch.get('gender'))
-        age_fairness = self.age_fairness(y_hat, batch.get('label').int(), batch.get('age'))
+        # # Convert one-hot encoded predictions to class format if necessary
+        # if y_hat.shape[1] == self.num_classes:
+        #     y_hat = y_hat.argmax(dim=1)
 
-        for key, value in gender_fairness.items():
-            self.log(f'test_gender-fairness_{key}', value.item(), on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
-        for key, value in age_fairness.items():
-            self.log(f'test_age-fairness_{key}', value.item(), on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
+        # gender_fairness = self.gender_fairness(y_hat, batch.get('label').int(), batch.get('gender'))
+        # age_fairness = self.age_fairness(y_hat, batch.get('label').int(), batch.get('age'))
+
+        # for key, value in gender_fairness.items():
+        #     self.log(f'test_gender-fairness_{key}', value.item(), on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
+        # for key, value in age_fairness.items():
+        #     self.log(f'test_age-fairness_{key}', value.item(), on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
