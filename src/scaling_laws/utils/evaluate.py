@@ -6,7 +6,7 @@ import yaml
 from torchvision import transforms
 from src.model.classification import VisionTransformerModel
 from src.config import config
-from src.scaling_laws.utils.metric import Metric
+from src.scaling_laws.utils.metric import MetricAnalyzer
 from src.datamodule.dataset.vision import OdirModule, BrsetModule
 from src.datamodule.dataset.chest import CheXpertModule
 from src.datamodule.dataset.skin import Ham10000Module
@@ -97,7 +97,7 @@ class TestModelExperiment:
         datamodule = datamodule_class(
             data_dir=dataset_config['data_path'],
             image_data_dir=dataset_config['image_data_path'],
-            batch_size=32,  # Default batch size, can be adjusted
+            batch_size=128,  # Default batch size, can be adjusted
             model_transform=None,  # No model transform available here
             augment_train=False,  # No augmentation by default
             fraction=1.0,  # Use full dataset by default
@@ -164,5 +164,5 @@ if __name__ == '__main__':    # Set up argument parser
     # Create and run the experiment
     experiment = TestModelExperiment(args.experiments, dataset=args.dataset, name=args.name)
     experiment.run_tests()
-    metric_calculator = Metric(experiment.results_df, experiment.model_num_groups, experiment.path)
-    metric_calculator.run_metrics()
+    metric_calculator = MetricAnalyzer(experiment.results_df, experiment.model_num_groups, experiment.path)
+    metric_calculator.generate_all_plots()

@@ -1,6 +1,11 @@
 from typing import Union, List
 from ..base import Dataset, DataModule
+from src.config import config
 
+if config['data']['random_seed'] is not None:
+    RANDOM_SEED = config['data']['random_seed']
+else:
+    RANDOM_SEED = 42
 class CheXpert(Dataset):
     """CheXpert dataset for chest X-ray classification.
 
@@ -105,11 +110,11 @@ class CheXpert(Dataset):
             self.labels = self.labels[self.labels[self.path_column].str.contains('train', case=False)]
             if self.fraction < 1.0:
                 self.labels = self.labels.groupby('labels').apply(
-                    lambda x: x.sample(frac=self.fraction, random_state=42)
+                    lambda x: x.sample(frac=self.fraction, random_state=RANDOM_SEED)
                 ).reset_index(drop=True)
             elif self.fraction > 1.0:
                 self.labels = self.labels.groupby('labels').apply(
-                    lambda x: x.sample(n=self.fraction, random_state=42)
+                    lambda x: x.sample(n=int(self.fraction), random_state=RANDOM_SEED)
                 ).reset_index(drop=True)
         elif self.type == 'val' or self.type in ['test', 'eval']:
             self.labels = self.labels[self.labels[self.path_column].str.contains('valid', case=False)]

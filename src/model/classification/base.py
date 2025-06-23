@@ -98,7 +98,7 @@ class ClassificationModel(LightningModule):
         loss = self.compute_loss(y_hat, batch.get('label'), 'val')
 
         self.compute_metrics(y_hat, batch.get('label'), 'val')
-        # self.compute_demographic_metrics(y_hat, batch, 'val')
+        self.compute_demographic_metrics(y_hat, batch, 'val')
         
         return loss
     
@@ -155,6 +155,9 @@ class ClassificationModel(LightningModule):
         self.log(f'{mode}_f1', f1, on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
     
     def _compute_metrics_for_group(self, y_hat, y, group, group_name, mode):
+        # Store AUROC values for each group
+        auroc_values = {}
+
         for group_value in torch.unique(group):
             mask = group == group_value
             if mask.any():
@@ -164,10 +167,23 @@ class ClassificationModel(LightningModule):
                 self.log(f'{mode}_{group_name}_auroc_{group_value.item()}', auroc, on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
                 self.log(f'{mode}_{group_name}_f1_{group_value.item()}', f1, on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
                 self.log(f'{mode}_{group_name}_acc_{group_value.item()}', acc, on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
+                # Store the AUROC value for this group
+                auroc_values[group_value.item()] = auroc
             else:
                 self.log(f'{mode}_{group_name}_auroc_{group_value.item()}', 0, on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
                 self.log(f'{mode}_{group_name}_f1_{group_value.item()}', 0, on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
                 self.log(f'{mode}_{group_name}_acc_{group_value.item()}', 0, on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
+
+        # Calculate min AUROC / max AUROC ratio
+        if auroc_values:
+            min_auroc = min(auroc_values.values())
+            max_auroc = max(auroc_values.values())
+            ratio = min_auroc / max_auroc if max_auroc != 0 else 0
+        else:
+            ratio = 0
+
+        # Log the min/max AUROC ratio
+        self.log(f'{mode}_{group_name}_min_max_auroc_ratio', ratio, on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
 
     def compute_demographic_metrics(self, y_hat, batch, mode):
         """Computes the demographic metrics for the model.

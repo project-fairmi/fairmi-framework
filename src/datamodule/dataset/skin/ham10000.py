@@ -81,6 +81,17 @@ class Ham10000(Dataset):
             'bcc': 1,   # Basal cell carcinoma (malignant)
             'akiec': 1  # Actinic keratoses and intraepithelial carcinoma (malignant)
         }
+
+        # Create dictionary specifically for melanoma detection
+        melanoma_map = {
+            'nv': 0,    # Melanocytic nevi (not melanoma)
+            'bkl': 0,   # Benign keratosis-like lesions (not melanoma)
+            'df': 0,    # Dermatofibroma (not melanoma)
+            'vasc': 0,  # Vascular lesions (not melanoma)
+            'mel': 1,   # Melanoma (positive)
+            'bcc': 0,   # Basal cell carcinoma (not melanoma)
+            'akiec': 0  # Actinic keratoses (not melanoma)
+        }
         
         label_mapping = {
             'akiec': 0,
@@ -98,6 +109,9 @@ class Ham10000(Dataset):
 
         # Create binary classification column
         self.labels['malignant'] = self.labels['dx'].map(malignant_map)
+
+        # Create melanoma detection column
+        self.labels['melanoma'] = self.labels['dx'].map(melanoma_map)
         
         # Continue with existing code
         self.labels[self.age_column] = self.labels[self.age_column].replace(0, 1)
@@ -112,29 +126,52 @@ class Ham10000(Dataset):
         # Mark whether each row corresponds to a unique lesion
         self.labels['is_unique'] = self.labels[self.patient_id_column].isin(unique_lesions)
 
-        # Split unique lesions into train/validation sets
+        # Split unique lesions into train and test sets (70% train, 30% test)
         unique_data = self.labels[self.labels['is_unique']]
-        _, val_data = train_test_split(
+        
+        # First split: separate train (70%) from test portion (30%)
+        train_data, test_portion = train_test_split(
             unique_data, 
-            test_size=0.2, 
+            test_size=0.3, 
             random_state=101, 
             stratify=unique_data['labels']
         )
+        
+        # Second split: divide test portion into validation and test
+        # Split the 30% test portion equally: 15% validation + 15% test
+        val_data, test_data = train_test_split(
+            test_portion, 
+            test_size=0.5,  # 50% da porção de teste (15% do total)
+            random_state=101, 
+            stratify=test_portion['labels']
+        )
 
-        # Create validation image IDs set for efficient lookup
+        # Create image ID sets for efficient lookup
         val_image_ids = set(val_data['image_id'])
+        test_image_ids = set(test_data['image_id'])
 
         # Assign final dataset based on type
         if self.type == 'train':
-            # Keep only training images (exclude validation images)
-            self.labels = self.labels[~self.labels['image_id'].isin(val_image_ids)].reset_index(drop=True)
+            # Keep only training images (exclude validation and test images)
+            excluded_ids = val_image_ids.union(test_image_ids)
+            self.labels = self.labels[~self.labels['image_id'].isin(excluded_ids)].reset_index(drop=True)
+            
             if self.fraction < 1.0:
                 # Amostragem estratificada para manter distribuição
                 self.labels = self.labels.groupby('labels').apply(
                     lambda x: x.sample(frac=self.fraction, random_state=42)
                 ).reset_index(drop=True)
-        elif self.type in ['val', 'test', 'eval']:
+            elif self.fraction > 1.0:
+                self.labels = self.labels.groupby('labels').apply(
+                    lambda x: x.sample(n=int(self.fraction), random_state=42)
+                ).reset_index(drop=True)
+                
+        elif self.type == 'val':
             self.labels = val_data.reset_index(drop=True)
+            
+        elif self.type in ['test', 'eval']:
+            self.labels = test_data.reset_index(drop=True)
+
 
 def Ham10000Module(batch_size: int = 32,
                    num_workers: int = 4,

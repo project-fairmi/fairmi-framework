@@ -11,8 +11,13 @@ import numpy as np
 from PIL import Image
 from sklearn.model_selection import train_test_split
 from torch.utils.data import WeightedRandomSampler
+from src.config import config
 
-RANDOM_SEED = 42
+if config['data']['random_seed'] is not None:
+    RANDOM_SEED = config['data']['random_seed']
+else:
+    RANDOM_SEED = 42
+
 TRAIN_SPLIT = 0.6
 VAL_SPLIT = 0.2
 TEST_SPLIT = 0.2
@@ -70,7 +75,8 @@ class Dataset(TorchDataset):
         if not model_transform_to_add:
             model_transform_to_add = transforms.Compose([
                 transforms.Resize((224, 224)),
-                transforms.ToTensor(),
+                transforms.ToImage(),
+                transforms.ToDtype(torch.float32, scale=True),
                 transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
             ])
         

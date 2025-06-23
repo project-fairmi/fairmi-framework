@@ -7,11 +7,11 @@ from pathlib import Path
 
 class MetricAnalyzer:
     """Analyzes and visualizes model performance metrics with confidence intervals."""
-    
+
     def __init__(self, results_df: pd.DataFrame, num_groups: int, save_path: str):
         """
         Initialize the MetricAnalyzer.
-        
+
         Args:
             results_df: DataFrame with experiment results
             num_groups: Number of demographic groups
@@ -21,230 +21,278 @@ class MetricAnalyzer:
         self.num_groups = num_groups
         self.save_path = Path(save_path)
         self.save_path.mkdir(parents=True, exist_ok=True)
-    
-    def _calculate_statistics(self, column: str, n: int = 3) -> pd.DataFrame:
-        """Calculate mean, std, and 95% CI for a column grouped by experimental conditions."""
-        stats = (self.results_df
-                .groupby(['version', 'fraction', 'pretrain'])[column]
-                .agg(['mean', 'std'])
-                .reset_index()
-                .sort_values('fraction'))
-        
-        # Calculate 95% confidence interval
-        margin_error = 1.96 * (stats['std'] / np.sqrt(n))
-        stats['ci95_hi'] = stats['mean'] + margin_error
-        stats['ci95_lo'] = stats['mean'] - margin_error
-        
-        return stats
-    
-    def _create_line_plot(self, stats: pd.DataFrame, y_label: str, 
-                         title: str, filename: str) -> None:
-        """Create line plot with confidence intervals."""
+
+        self.create_demographic_frac()
+
+    def create_demographic_frac(self, metric='auroc') -> None:
+        """Create demographic fraction columns for each group."""
+        for group in ['gender', 'age']:
+            frac_column = self._calculate_frac(group, metric)
+            self.results_df[f'{group}_frac_{metric}'] = frac_column
+
+    def _create_line_plot(self, column: str, y_label: str, title: str, filename: str) -> None:
+        """Create line plot with automatic confidence intervals using seaborn."""
         plt.figure(figsize=(10, 6))
+
+        # Seaborn calcula automaticamente média e CI
+        sns.lineplot(
+            data=self.results_df, 
+            x='fraction', 
+            y=column,
+            hue='pretrain', 
+            marker='o', 
+            linewidth=2,
+            errorbar='ci'  # Calcula CI 95% automaticamente
+        )
+
+        # # Formatting - adjust xticks for log scale
+        plt.xticks([0.0001, 0.0005, 0.001, 0.01], 
+                  ['23', '115', '230', '2300'])
+        # Set logarithmic scale for x-axis
+        plt.xscale('log')
         
-        # Main line plot
-        sns.lineplot(data=stats, x='fraction', y='mean', 
-                    hue='pretrain', marker='o', linewidth=2)
         
-        # Add confidence intervals
-        for pretrain in stats['pretrain'].unique():
-            subset = stats[stats['pretrain'] == pretrain]
-            plt.fill_between(subset['fraction'], subset['ci95_lo'], 
-                           subset['ci95_hi'], alpha=0.3)
-        
-        # Formatting
-        plt.xticks([0.25, 0.5, 0.75, 1.0])
-        plt.xlabel('Percentage of Training Data', fontsize=12)
+        plt.xlabel('Images', fontsize=12)
         plt.ylabel(y_label, fontsize=12)
         plt.title(title, fontsize=14)
         plt.grid(True, alpha=0.3)
-
-        # Optimize axis limits
-        y_max = stats['mean'].max() + (stats['mean'].max() * 0.1)
-        x_max = stats['fraction'].max() + (stats['fraction'].max() * 0.1)
-        plt.ylim(0, y_max)
-        plt.xlim(0, x_max)
-
         plt.tight_layout()
-        
+
         # Save plot
         plt.savefig(self.save_path / filename, dpi=300, bbox_inches='tight')
         plt.close()
-    
-    def _calculate_max_min(self, group_type: str, metric: str = 'auroc') -> tuple[float, float]:
+
+    def _calculate_max_min(self, group: str, metric: str = 'auroc') -> tuple[float, float]:
         """Calculate max and min values for a group."""
-        if group_type == 'gender':
-            max_val = max(
-                self.results_df[f'test_gender_{metric}_0'],
-                self.results_df[f'test_gender_{metric}_1']
-            )
-            min_val = min(
-                self.results_df[f'test_gender_{metric}_0'],
-                self.results_df[f'test_gender_{metric}_1']
-            )
-            return max_val, min_val
-        elif group_type == 'age':
+        if group == 'gender':
+            gender_columns = [f'test_gender_{metric}_{i}' for i in range(2)]
+            max_column = self.results_df[gender_columns].max(axis=1)
+            min_column = self.results_df[gender_columns].min(axis=1)
+            return max_column, min_column
+        elif group == 'age':
             age_columns = [f'test_age_{metric}_{i}' for i in range(self.num_groups)]
-            max_val = self.results_df[age_columns].max(axis=1)
-            min_val = self.results_df[age_columns].min(axis=1)
-            return max_val.max(), min_val.min()
+            max_column = self.results_df[age_columns].max(axis=1)
+            min_column = self.results_df[age_columns].min(axis=1)
+            return max_column, min_column
         else:
-            raise ValueError("group_type must be 'gender' or 'age'")
+            raise ValueError("group must be 'gender' or 'age'")
 
-    def _calculate_gap(self, gap_type: Literal['gender', 'age'],
-                      metric: str = 'auroc', as_percentage: bool = True) -> str:
-        """
-        Calculate performance gap between demographic groups.
+    def _calculate_frac(self, group: Literal['gender', 'age'], metric: str = 'auroc') -> str:
+        max_vals, min_vals = self._calculate_max_min(group, metric)
+        return min_vals / max_vals
 
-        Args:
-            gap_type: The type of gap to calculate ('gender' or 'age').
-            metric: The metric to use for gap calculation. Default is 'auroc'.
-            as_percentage: Whether to return the gap as a percentage. Default is True.
-
-        Returns:
-            The name of the column containing the gap values.
-        """
-        gap_column = f'gap_{gap_type}'
-        fraction_column = f'frac_{gap_type}'
-
-        # Calculate max and min values using the _calculate_max_min function
-        max_val, min_val = self._calculate_max_min(gap_type, metric)
-
-        # Calculate gap and fraction
-        if as_percentage:
-            gap = abs(max_val - min_val) * 100
-        else:
-            gap = abs(max_val - min_val)
-
-        fraction = min_val / max_val
-
-        # Store results in the DataFrame
-        self.results_df[gap_column] = gap
-        self.results_df[fraction_column] = fraction
-
-        return gap_column
-    
     def plot_data_efficiency(self, metric: str = 'auroc') -> None:
         """Plot model performance vs training data fraction."""
-        stats = self._calculate_statistics(f'test_{metric}')
         self._create_line_plot(
-            stats=stats,
+            column=f'test_{metric}',
             y_label=metric.upper(),
             title=f'{metric.upper()} vs Training Data Fraction',
             filename='data_efficiency.png'
         )
-    
-    def plot_gap_efficiency(self, gap_type: Literal['gender', 'age'], 
-                           metric: str = 'auroc') -> None:
-        """Plot demographic gap vs training data fraction."""
-        gap_column = self._calculate_gap(gap_type, metric)
-        stats = self._calculate_statistics(gap_column)
-        
+
+    def plot_frac_efficiency(self, group: Literal['gender', 'age'], metric: str = 'auroc') -> None:
+        """Plot demographic frac vs training data fraction."""
+        frac_column = f'{group}_frac_{metric}'
         self._create_line_plot(
-            stats=stats,
-            y_label=f'{gap_type.title()} Gap % ({metric.upper()})',
-            title=f'{gap_type.title()} Performance Gap vs Training Data',
-            filename=f'gap_efficiency_{gap_type}.png'
+            column=frac_column,
+            y_label=f'{group.title()} Frac % ({metric.upper()})',
+            title=f'{group.title()} Performance Frac vs Training Data',
+            filename=f'frac_efficiency_{group}.png'
         )
-    
-    def plot_gap_vs_performance(self, gap_type: Literal['gender', 'age'], 
-                               metric: str = 'auroc') -> None:
-        """Plot performance vs demographic gap scatter plot."""
-        gap_column = self._calculate_gap(gap_type, metric)
-        
+
+    def plot_frac_vs_performance(self, group: Literal['gender', 'age'], metric: str = 'auroc') -> None:
+        """Plot Pareto front: performance vs demographic fairness."""
+        frac_column_name = f'{group}_frac_{metric}'
+
         # Calculate statistics for both metrics
         stats = (self.results_df
                 .groupby(['version', 'pretrain', 'fraction'])
-                [[f'test_{metric}', gap_column]]
+                [[f'test_{metric}', frac_column_name]]
                 .agg(['mean', 'std'])
                 .reset_index())
-        
-        plt.figure(figsize=(10, 6))
+
+        # Flatten column names
+        stats.columns = ['_'.join(col).strip('_') if col[1] else col[0]
+                        for col in stats.columns.values]
+
+        # Correct Pareto front calculation
+        def calculate_pareto_front(df, x_col, y_col, maximize_x=True, maximize_y=True):
+            """Calculate Pareto front points."""
+            pareto_points = []
+
+            for i, point in df.iterrows():
+                is_dominated = False
+
+                for j, other in df.iterrows():
+                    if i == j:
+                        continue
+
+                    # Check if current point is dominated by other point
+                    x_better = (other[x_col] >= point[x_col]) if maximize_x else (other[x_col] <= point[x_col])
+                    y_better = (other[y_col] >= point[y_col]) if maximize_y else (other[y_col] <= point[y_col])
+
+                    # At least one dimension must be strictly better
+                    x_strictly_better = (other[x_col] > point[x_col]) if maximize_x else (other[x_col] < point[x_col])
+                    y_strictly_better = (other[y_col] > point[y_col]) if maximize_y else (other[y_col] < point[y_col])
+
+                    if x_better and y_better and (x_strictly_better or y_strictly_better):
+                        is_dominated = True
+                        break
+
+                if not is_dominated:
+                    pareto_points.append(point)
+
+            return pd.DataFrame(pareto_points)
+
+        plt.figure(figsize=(10, 8))
+
+        # Create scatter plot
         sns.scatterplot(
             data=stats,
-            x=(f'test_{metric}', 'mean'),
-            y=(gap_column, 'mean'),
+            x=f'{frac_column_name}_mean',
+            y=f'test_{metric}_mean',
             hue='fraction',
             style='pretrain',
-            s=100,
-            palette='viridis'
+            s=120,
+            alpha=0.8,
+            palette='Set1',
+            zorder=2
         )
-        
-        plt.xlabel(f'{metric.upper()}', fontsize=12)
-        plt.ylabel(f'{gap_type.title()} Gap % ({metric.upper()})', fontsize=12)
-        plt.title(f'Performance vs {gap_type.title()} Gap', fontsize=14)
-        plt.grid(True, alpha=0.3)
-        plt.tight_layout()
-        
-        plt.savefig(self.save_path / f'gap_vs_performance_{gap_type}.png', 
-                   dpi=300, bbox_inches='tight')
-        plt.close()
-    
-    def plot_group_comparison(self, group_type: Literal['gender', 'age'],
-                             metric: str = 'auroc') -> None:
-        """Plot max vs min group performance."""
-        # Calculate max and min values using the _calculate_max_min function
-        max_vals, min_vals = self._calculate_max_min(group_type, metric)
 
-        # Set labels based on group type
-        if group_type == 'age':
+        # Calculate and plot Pareto front
+        pareto_df = calculate_pareto_front(
+            stats,
+            f'{frac_column_name}_mean',
+            f'test_{metric}_mean',
+            maximize_x=True,
+            maximize_y=True
+        )
+
+        if len(pareto_df) > 1:
+            pareto_df = pareto_df.sort_values(f'{frac_column_name}_mean')
+            plt.plot(
+                pareto_df[f'{frac_column_name}_mean'],
+                pareto_df[f'test_{metric}_mean'],
+                'r--',
+                alpha=0.8,
+                linewidth=3,
+                label='Pareto Front',
+                zorder=1
+            )
+
+        # Add error bars
+        plt.errorbar(
+            stats[f'{frac_column_name}_mean'],
+            stats[f'test_{metric}_mean'],
+            xerr=stats[f'{frac_column_name}_std'],
+            yerr=stats[f'test_{metric}_std'],
+            fmt='none',
+            alpha=0.3,
+            color='gray'
+        )
+
+        plt.xlabel(f'{group.title()} Fairness Fraction', fontsize=12)
+        plt.ylabel(f'{metric.upper()} Performance', fontsize=12)
+        plt.title(f'Pareto Front: {metric.upper()} vs {group.title()} Fairness', fontsize=14)
+        plt.grid(True, alpha=0.3)
+        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.tight_layout()
+        plt.savefig(self.save_path / f'pareto_front_{group}_{metric}.png', dpi=300, bbox_inches='tight')
+        plt.close()
+
+    def plot_group_comparison(self, group: Literal['gender', 'age'], metric: str = 'auroc') -> None:
+        """Plot max vs min group performance."""
+        max_vals, min_vals = self._calculate_max_min(group, metric)
+
+        if group == 'age':
             x_label, y_label = f'Max Age {metric.upper()}', f'Min Age {metric.upper()}'
-        elif group_type == 'gender':
+        elif group == 'gender':
             x_label, y_label = f'Female {metric.upper()}', f'Male {metric.upper()}'
         else:
-            raise ValueError("group_type must be 'gender' or 'age'")
-        
-        # Create temporary DataFrame for grouping
+            raise ValueError("group must be 'gender' or 'age'")
+
+        # Create temporary DataFrame for seaborn
         temp_df = self.results_df.copy()
         temp_df['max_vals'] = max_vals
         temp_df['min_vals'] = min_vals
-        
-        stats = (temp_df
-                .groupby(['version', 'fraction', 'pretrain'])
-                [['max_vals', 'min_vals']]
-                .agg(['mean', 'std'])
-                .reset_index())
-        
+
         plt.figure(figsize=(10, 6))
+        
+        # Use seaborn with automatic statistical calculations
         sns.scatterplot(
-            data=stats,
-            x=('max_vals', 'mean'),
-            y=('min_vals', 'mean'),
+            data=temp_df,
+            x='max_vals',
+            y='min_vals',
             hue='fraction',
             style='pretrain',
-            s=150,
-            palette='viridis'
+            s=150
         )
-        
+
         # Add identity line
-        lims = [
-            min(stats[('max_vals', 'mean')].min(), stats[('min_vals', 'mean')].min()),
-            max(stats[('max_vals', 'mean')].max(), stats[('min_vals', 'mean')].max())
-        ]
+        all_vals = pd.concat([temp_df['max_vals'], temp_df['min_vals']])
+        lims = [all_vals.min(), all_vals.max()]
         plt.plot(lims, lims, 'k--', alpha=0.7, linewidth=2, label='Perfect Equality')
-        
+
         plt.xlabel(x_label, fontsize=12)
         plt.ylabel(y_label, fontsize=12)
-        plt.title(f'{group_type.title()} Group Performance Comparison', fontsize=14)
+        plt.title(f'{group.title()} Group Performance Comparison', fontsize=14)
         plt.grid(True, alpha=0.3)
         plt.legend(fontsize=10)
         plt.tight_layout()
-        
-        plt.savefig(self.save_path / f'group_comparison_{group_type}.png', 
-                   dpi=300, bbox_inches='tight')
+        plt.savefig(self.save_path / f'group_comparison_{group}.png', dpi=300, bbox_inches='tight')
         plt.close()
-    
+
+    def plot_model_size(self, group: Literal['gender', 'age'], metric: str = 'auroc') -> None:
+        """Plot model size vs fairness fraction metric with lines for each fraction dataset."""
+        model_size_map = {
+            'hiera_tiny_224.mae': 27.1,
+            'hiera_small_224.mae': 34.2,
+            'hiera_base_224.mae': 50.8,
+            'hiera_large_224.mae': 213.0,
+            'hiera_huge_224.mae': 671.0
+        }
+
+        self.results_df['model_size_million'] = self.results_df['pretrain'].map(model_size_map)
+        frac_column = f'{group}_frac_{metric}'
+        
+        plot_data = self.results_df[['model_size_million', frac_column, 'fraction']].dropna()
+
+        plt.figure(figsize=(10, 6))
+        
+        # Use seaborn with automatic confidence intervals
+        sns.lineplot(
+            data=plot_data, 
+            x='model_size_million', 
+            y=frac_column, 
+            hue='fraction',
+            marker='o',
+            linewidth=2,
+            errorbar='ci',
+            palette='Set1'
+        )
+
+        plt.xscale('log')
+        plt.xlabel('Model Size (Million Parameters)', fontsize=12)
+        plt.ylabel(f'{group.title()} Frac % ({metric.upper()})', fontsize=12)
+        plt.title(f'Model Size vs {group.title()} {metric.upper()} Fairness Fraction', fontsize=14)
+        plt.grid(True, alpha=0.3)
+        plt.legend(title='Training Data Fraction', bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.tight_layout()
+        plt.savefig(self.save_path / f'model_size_vs_{group}_frac_{metric}.png', dpi=300, bbox_inches='tight')
+        plt.close()
+
     def generate_all_plots(self, metric: str = 'auroc') -> None:
         """Generate all analysis plots."""
         print("Generating plots...")
-        
+
         self.plot_data_efficiency(metric)
         print("✓ Data efficiency plot created")
-        
-        for gap_type in ['age', 'gender']:
-            self.plot_gap_efficiency(gap_type, metric)
-            self.plot_gap_vs_performance(gap_type, metric)
-            self.plot_group_comparison(gap_type, metric)
-            print(f"✓ {gap_type.title()} analysis plots created")
-        
+
+        for group in ['age', 'gender']:
+            self.plot_frac_efficiency(group, metric)
+            self.plot_frac_vs_performance(group, metric)
+            self.plot_group_comparison(group, metric)
+            self.plot_model_size(group, metric)
+            print(f"✓ {group.title()} analysis plots created")
+
         print(f"All plots saved to: {self.save_path}")
