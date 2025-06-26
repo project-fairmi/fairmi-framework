@@ -62,10 +62,10 @@ def main(args: argparse.Namespace):
 
     # Configure checkpointing
     checkpoint_callback = ModelCheckpoint(
-        monitor='val_auroc',
-        filename='{epoch}-{val_auroc:.2f}',
-        save_top_k=1,
-        mode='max',
+        monitor='val_loss',
+        filename='{epoch}-{val_loss:.2f}',
+        save_top_k=3,
+        mode='min',
         save_weights_only=True # Save only weights to save space
     )
 
@@ -95,6 +95,7 @@ def main(args: argparse.Namespace):
             max_epochs=args.max_epochs,
             weights_path=config['model'][args.model_name]['weights_path'],
             freeze_layers=args.freeze_layers,
+            loss=args.loss
         )
         
 
@@ -159,7 +160,7 @@ if __name__ == "__main__":
     parser.add_argument('--accumulate_grad_batches', type=int, default=config['training']['accumulate_grad_batches'], help='Number of batches to accumulate gradients before updating the model.')
     parser.add_argument('--fraction', type=float, default=config['training']['fraction'], help='Fraction of the dataset to use for training. 1.0 means full dataset.')
     parser.add_argument('--freeze_layers', type=int, default=config['training'].get('freeze_layers', 0), help='Number of layers to freeze (0 = no freezing, 1 = freeze all but head, 2 = freeze all but head and one more layer, etc.)')
-    
+    parser.add_argument('--loss', type=str, default=config['training']['loss'], choices=['ce', 'fair'], help='Loss function to use for training.')
 
     # --- Data Configuration ---
     parser.add_argument('--dataset', type=str, default=config['data']['dataset'], choices=list(DATASET_MODULES.keys()), help='Select the dataset to use.')

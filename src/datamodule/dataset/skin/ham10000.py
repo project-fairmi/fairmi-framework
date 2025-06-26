@@ -138,10 +138,10 @@ class Ham10000(Dataset):
         )
         
         # Second split: divide test portion into validation and test
-        # Split the 30% test portion equally: 15% validation + 15% test
+        # Split the 30% test portion in: 10% validation + 20% test
         val_data, test_data = train_test_split(
             test_portion, 
-            test_size=0.5,  # 50% da porção de teste (15% do total)
+            test_size=0.33,  # 50% da porção de teste (15% do total)
             random_state=101, 
             stratify=test_portion['labels']
         )

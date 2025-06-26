@@ -2,11 +2,12 @@ from lightning.pytorch import LightningModule
 import torchmetrics
 from torch import nn
 import torch
+from src.model.utils import FairCrossEntropyLoss
 
 class ClassificationModel(LightningModule):
     def __init__(self,num_age_groups: int, num_classes: int = 2, learning_rate: float = 0.0001,
                 sync_dist: bool = True, weight_decay: float = 0.0001,
-                pos_weight: float = 1.0):
+                pos_weight: float = 1.0, loss='ce'):
         super().__init__()
         self.num_classes = num_classes
         self.num_age_groups = num_age_groups
@@ -15,6 +16,7 @@ class ClassificationModel(LightningModule):
         self.weight_decay = weight_decay
         self.pos_weight = pos_weight
         self.model = None
+        self.loss = loss
         self.criterion = self.configure_loss()
 
         
@@ -55,9 +57,16 @@ class ClassificationModel(LightningModule):
             return nn.BCEWithLogitsLoss()
         
         elif self.num_classes > 1:
-            return nn.CrossEntropyLoss(
-                label_smoothing=0.1
-            )
+            if self.loss == 'ce':
+                return nn.CrossEntropyLoss(
+                    label_smoothing=0.1
+                )
+            elif self.loss == 'fair':
+                return FairCrossEntropyLoss(
+                    fairness_weight=0.1,
+                    label_smoothing=0.1
+                )
+                
         else:
             raise ValueError("num_classes should be greater than or equal to 1.")
     
@@ -78,7 +87,7 @@ class ClassificationModel(LightningModule):
             torch.Tensor: The loss value.
         """
         y_hat = self(batch.get('image'))
-        loss = self.compute_loss(y_hat, batch.get('label'), 'train')
+        loss = self.compute_loss(y_hat, batch, 'train')
 
         self.compute_metrics(y_hat, batch.get('label'), 'train')
         
@@ -95,7 +104,7 @@ class ClassificationModel(LightningModule):
             torch.Tensor: The loss value.
         """
         y_hat = self(batch.get('image'))
-        loss = self.compute_loss(y_hat, batch.get('label'), 'val')
+        loss = self.compute_loss(y_hat, batch, 'val')
 
         self.compute_metrics(y_hat, batch.get('label'), 'val')
         self.compute_demographic_metrics(y_hat, batch, 'val')
@@ -113,14 +122,14 @@ class ClassificationModel(LightningModule):
             torch.Tensor: The loss value.
         """
         y_hat = self(batch.get('image'))
-        loss = self.compute_loss(y_hat, batch.get('label'), 'test')
+        loss = self.compute_loss(y_hat, batch, 'test')
 
         self.compute_metrics(y_hat, batch.get('label'), 'test')
         self.compute_demographic_metrics(y_hat, batch, 'test')
         
         return loss
 
-    def compute_loss(self, y_hat, y, mode):
+    def compute_loss(self, y_hat, batch, mode):
         """Computes the loss for the model.
 
         Args:
@@ -131,7 +140,11 @@ class ClassificationModel(LightningModule):
         Returns:
             torch.Tensor: The computed loss.
         """
-        loss = self.criterion(y_hat, y)
+        if self.loss == 'fair':
+            loss = self.criterion(y_hat, batch.get('label'), batch.get('gender'))
+        else:
+            loss = self.criterion(y_hat, batch.get('label'))
+
         self.log(f'{mode}_loss', loss, on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
         return loss
 
@@ -194,15 +207,3 @@ class ClassificationModel(LightningModule):
         """
         self._compute_metrics_for_group(y_hat, batch.get('label'), batch.get('gender'), 'gender', mode)
         self._compute_metrics_for_group(y_hat, batch.get('label'), batch.get('age'), 'age', mode)
-
-        # # Convert one-hot encoded predictions to class format if necessary
-        # if y_hat.shape[1] == self.num_classes:
-        #     y_hat = y_hat.argmax(dim=1)
-
-        # gender_fairness = self.gender_fairness(y_hat, batch.get('label').int(), batch.get('gender'))
-        # age_fairness = self.age_fairness(y_hat, batch.get('label').int(), batch.get('age'))
-
-        # for key, value in gender_fairness.items():
-        #     self.log(f'test_gender-fairness_{key}', value.item(), on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
-        # for key, value in age_fairness.items():
-        #     self.log(f'test_age-fairness_{key}', value.item(), on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
