@@ -64,7 +64,7 @@ def main(args: argparse.Namespace):
     checkpoint_callback = ModelCheckpoint(
         monitor='val_loss',
         filename='{epoch}-{val_loss:.2f}',
-        save_top_k=3,
+        save_top_k=1,
         mode='min',
         save_weights_only=True # Save only weights to save space
     )
@@ -84,6 +84,9 @@ def main(args: argparse.Namespace):
     # Initialize the actual model instance within the Trainer's context.
     # This is important for compatibility with certain Lightning strategies (e.g., DDP).
     print("Initializing model within Trainer context...")
+
+    
+
     with trainer.init_module():
          model = VisionTransformerModel(
             num_classes=num_classes,
@@ -95,7 +98,8 @@ def main(args: argparse.Namespace):
             max_epochs=args.max_epochs,
             weights_path=config['model'][args.model_name]['weights_path'],
             freeze_layers=args.freeze_layers,
-            loss=args.loss
+            loss=args.loss,
+            fairness_weight=args.fairness_weight
         )
         
 
@@ -161,7 +165,7 @@ if __name__ == "__main__":
     parser.add_argument('--fraction', type=float, default=config['training']['fraction'], help='Fraction of the dataset to use for training. 1.0 means full dataset.')
     parser.add_argument('--freeze_layers', type=int, default=config['training'].get('freeze_layers', 0), help='Number of layers to freeze (0 = no freezing, 1 = freeze all but head, 2 = freeze all but head and one more layer, etc.)')
     parser.add_argument('--loss', type=str, default=config['training']['loss'], choices=['ce', 'fair'], help='Loss function to use for training.')
-
+    parser.add_argument('--fairness_weight', type=float, default=config['training']['fairness_weight'], help='Weight for fairness loss.')
     # --- Data Configuration ---
     parser.add_argument('--dataset', type=str, default=config['data']['dataset'], choices=list(DATASET_MODULES.keys()), help='Select the dataset to use.')
     parser.add_argument('--num_groups', type=int, default=config['data']['num_groups'], help='Number of demographic groups (e.g., age) for fairness analysis.')

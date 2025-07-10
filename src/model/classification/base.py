@@ -7,7 +7,7 @@ from src.model.utils import FairCrossEntropyLoss
 class ClassificationModel(LightningModule):
     def __init__(self,num_age_groups: int, num_classes: int = 2, learning_rate: float = 0.0001,
                 sync_dist: bool = True, weight_decay: float = 0.0001,
-                pos_weight: float = 1.0, loss='ce'):
+                pos_weight: float = 1.0, loss=None, fairness_weight=None):
         super().__init__()
         self.num_classes = num_classes
         self.num_age_groups = num_age_groups
@@ -17,6 +17,7 @@ class ClassificationModel(LightningModule):
         self.pos_weight = pos_weight
         self.model = None
         self.loss = loss
+        self.fairness_weight = fairness_weight
         self.criterion = self.configure_loss()
 
         
@@ -57,13 +58,13 @@ class ClassificationModel(LightningModule):
             return nn.BCEWithLogitsLoss()
         
         elif self.num_classes > 1:
-            if self.loss == 'ce':
-                return nn.CrossEntropyLoss(
+            if self.loss == 'fair':
+                return FairCrossEntropyLoss(
+                    fairness_weight=self.fairness_weight,
                     label_smoothing=0.1
                 )
-            elif self.loss == 'fair':
-                return FairCrossEntropyLoss(
-                    fairness_weight=0.1,
+            else:
+                return nn.CrossEntropyLoss(
                     label_smoothing=0.1
                 )
                 
@@ -141,7 +142,7 @@ class ClassificationModel(LightningModule):
             torch.Tensor: The computed loss.
         """
         if self.loss == 'fair':
-            loss = self.criterion(y_hat, batch.get('label'), batch.get('gender'))
+            loss = self.criterion(y_hat, batch.get('label'), batch.get('age'))
         else:
             loss = self.criterion(y_hat, batch.get('label'))
 

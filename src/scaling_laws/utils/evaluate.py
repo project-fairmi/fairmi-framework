@@ -34,6 +34,7 @@ class TestModelExperiment:
         self.model_files = self._find_model_files()
         self.model_data_percentage = self._find_model_data('fraction')
         self.model_data_pretain = self._find_model_data('model_id')
+        self.model_fairness_weight = self._find_model_data('fairness_weight')
         self.model_num_groups = next(iter(self._find_model_data('num_groups').values())) # return a dict, but the value is the same in the experiments
         self.dataset = dataset
         self.datamodule = self._load_datamodule(dataset)
@@ -136,12 +137,14 @@ class TestModelExperiment:
                 metrics = self.test_model(model)
                 fraction = self.model_data_percentage[version]
                 pretrain = self.model_data_pretain[version]
+                fairness_weight = self.model_fairness_weight[version]
                 results.append({
                     'dataset': self.dataset,
                     'version': version,
                     'model': file,
                     'fraction': fraction,
                     'pretrain': pretrain,
+                    'fairness_weight': fairness_weight,
                     **metrics[0]
                 })
 
