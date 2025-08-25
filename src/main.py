@@ -115,7 +115,8 @@ def main(args: argparse.Namespace):
         fraction=args.fraction,
         num_workers=dataset_config['num_workers'],
         task=dataset_config['task'],
-        num_groups=args.num_groups # This corresponds to num_age_groups in the model
+        num_groups=args.num_groups,
+        random_seed=args.random_seed,
     )
 
     if args.test:
@@ -169,6 +170,7 @@ if __name__ == "__main__":
     # --- Data Configuration ---
     parser.add_argument('--dataset', type=str, default=config['data']['dataset'], choices=list(DATASET_MODULES.keys()), help='Select the dataset to use.')
     parser.add_argument('--num_groups', type=int, default=config['data']['num_groups'], help='Number of demographic groups (e.g., age) for fairness analysis.')
+    parser.add_argument('--random_seed', type=int, default=config['data']['random_seed'], help='Random seed for reproducibility.')
     
     # --- Model Configuration ---
     parser.add_argument('--model_name', type=str, default=config['model']['name'], help='Identifier for the specific model architecture (used with config.yml).')

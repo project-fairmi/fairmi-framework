@@ -232,7 +232,8 @@ class DataModule(pl.LightningDataModule):
     """Data module for handling dataset operations in a PyTorch Lightning pipeline."""
 
     def __init__(self, dataset: Type[TorchDataset], data_dir: str, image_data_dir: str, task: str, model_transform: transforms.Compose,
-                 augment_train: bool = False, batch_size: int = 32, fraction: float = 1, num_workers: int = 11, num_groups: int = 4):
+                 augment_train: bool = False, batch_size: int = 32, fraction: float = 1,
+                num_workers: int = 11, num_groups: int = 4, random_seed: int = 42, **kwargs) -> None:
         """Initializes the data module."""
         super().__init__()
         self.dataset = dataset
@@ -245,6 +246,7 @@ class DataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.task = task
         self.num_groups = num_groups
+        self.random_seed = random_seed
         self.save_hyperparameters()
 
     def setup(self, stage: Optional[str] = None) -> None:
@@ -252,10 +254,10 @@ class DataModule(pl.LightningDataModule):
         if stage == "fit" or stage is None: # Ensure setup runs if stage is None (e.g., during testing without fit)
             self.dataset_train = self.dataset(data_dir=self.data_dir, image_data_dir=self.image_data_dir,
                                               type='train', model_transform=self.model_transform, augment=self.augment_train,
-                                              fraction=self.fraction, task=self.task, num_groups=self.num_groups)
+                                              fraction=self.fraction, task=self.task, num_groups=self.num_groups, random_seed=self.random_seed)
             self.dataset_val = self.dataset(data_dir=self.data_dir, image_data_dir=self.image_data_dir,
                                             type='val', model_transform=self.model_transform, augment=False, # No augmentation for validation
-                                            task=self.task, num_groups=self.num_groups)
+                                            task=self.task, num_groups=self.num_groups, random_seed=self.random_seed)
 
         if stage == "test" or stage is None:
              # Ensure setup runs if stage is None (e.g., during testing without fit)
@@ -263,7 +265,7 @@ class DataModule(pl.LightningDataModule):
             if not hasattr(self, 'dataset_test'):
                 self.dataset_test = self.dataset(data_dir=self.data_dir, image_data_dir=self.image_data_dir,
                                                 type='test', model_transform=self.model_transform, augment=False, # No augmentation for test
-                                                task=self.task, num_groups=self.num_groups)
+                                                task=self.task, num_groups=self.num_groups, random_seed=self.random_seed)
 
     def train_dataloader(self) -> DataLoader:
         """Returns the DataLoader for the training dataset."""

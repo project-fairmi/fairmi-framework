@@ -1,7 +1,6 @@
 import pandas as pd
 from ..base import Dataset, DataModule
 from sklearn.model_selection import train_test_split
-
 class Ham10000(Dataset):
     """HAM10000 dataset.
 
@@ -27,6 +26,7 @@ class Ham10000(Dataset):
                  patient_id_column: str = 'lesion_id',
                  age_column: str = 'age',
                  gender_column: str = 'sex',
+                 random_seed: int = 42,
                  **kwargs) -> None:
         """Initializes the HAM10000 dataset.
 
@@ -58,6 +58,7 @@ class Ham10000(Dataset):
             patient_id_column=patient_id_column,
             **kwargs
         )
+        self.random_seed = random_seed
         self.configure_dataset()
         self.split()
 
@@ -141,7 +142,7 @@ class Ham10000(Dataset):
         # Split the 30% test portion in: 10% validation + 20% test
         val_data, test_data = train_test_split(
             test_portion, 
-            test_size=0.33,  # 50% da porção de teste (15% do total)
+            test_size=0.66,
             random_state=101, 
             stratify=test_portion['labels']
         )
@@ -159,11 +160,11 @@ class Ham10000(Dataset):
             if self.fraction < 1.0:
                 # Amostragem estratificada para manter distribuição
                 self.labels = self.labels.groupby('labels').apply(
-                    lambda x: x.sample(frac=self.fraction, random_state=42)
+                    lambda x: x.sample(frac=self.fraction, random_state=self.random_seed)
                 ).reset_index(drop=True)
             elif self.fraction > 1.0:
                 self.labels = self.labels.groupby('labels').apply(
-                    lambda x: x.sample(n=int(self.fraction), random_state=42)
+                    lambda x: x.sample(n=int(self.fraction), random_state=self.random_seed)
                 ).reset_index(drop=True)
                 
         elif self.type == 'val':

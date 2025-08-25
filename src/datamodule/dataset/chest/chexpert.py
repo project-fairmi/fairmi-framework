@@ -1,11 +1,5 @@
 from typing import Union, List
 from ..base import Dataset, DataModule
-from src.config import config
-
-if config['data']['random_seed'] is not None:
-    RANDOM_SEED = config['data']['random_seed']
-else:
-    RANDOM_SEED = 42
 class CheXpert(Dataset):
     """CheXpert dataset for chest X-ray classification.
 
@@ -34,6 +28,7 @@ class CheXpert(Dataset):
                  gender_column: str = 'Sex',
                  path_column: str = 'Path',
                  image_data_dir: str = None,
+                 random_seed: int = 42,
                  **kwargs) -> None:
         """Initializes the CheXpert dataset.
 
@@ -67,7 +62,7 @@ class CheXpert(Dataset):
             path_column=path_column,
             **kwargs
         )
-
+        self.random_seed = random_seed
         self.configure_dataset()
         self.split()
 
@@ -110,11 +105,11 @@ class CheXpert(Dataset):
             self.labels = self.labels[self.labels[self.path_column].str.contains('train', case=False)]
             if self.fraction < 1.0:
                 self.labels = self.labels.groupby('labels').apply(
-                    lambda x: x.sample(frac=self.fraction, random_state=RANDOM_SEED)
+                    lambda x: x.sample(frac=self.fraction, random_state=self.random_seed)
                 ).reset_index(drop=True)
             elif self.fraction > 1.0:
                 self.labels = self.labels.groupby('labels').apply(
-                    lambda x: x.sample(n=int(self.fraction), random_state=RANDOM_SEED)
+                    lambda x: x.sample(n=int(self.fraction), random_state=self.random_seed)
                 ).reset_index(drop=True)
         elif self.type == 'val' or self.type in ['test', 'eval']:
             self.labels = self.labels[self.labels[self.path_column].str.contains('valid', case=False)]
