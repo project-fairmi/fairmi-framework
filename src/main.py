@@ -78,6 +78,7 @@ def main(args: argparse.Namespace):
         strategy=args.strategy,
         num_nodes=args.num_nodes,
         accumulate_grad_batches=args.accumulate_grad_batches,
+        val_check_interval=args.val_check_interval,
     )
 
     # Configure and initialize the actual model instance to be used for training/testing
@@ -167,6 +168,7 @@ if __name__ == "__main__":
     parser.add_argument('--freeze_layers', type=int, default=config['training'].get('freeze_layers', 0), help='Number of layers to freeze (0 = no freezing, 1 = freeze all but head, 2 = freeze all but head and one more layer, etc.)')
     parser.add_argument('--loss', type=str, default=config['training']['loss'], choices=['ce', 'fair'], help='Loss function to use for training.')
     parser.add_argument('--fairness_weight', type=float, default=config['training']['fairness_weight'], help='Weight for fairness loss.')
+    parser.add_argument('--val_check_interval', type=float, default=config['training'].get('val_check_interval', 1.0), help='How often to check the validation set. Can be a float (e.g., 1.0 for once per epoch) or an int (e.g., 1 for every training step).')
     # --- Data Configuration ---
     parser.add_argument('--dataset', type=str, default=config['data']['dataset'], choices=list(DATASET_MODULES.keys()), help='Select the dataset to use.')
     parser.add_argument('--num_groups', type=int, default=config['data']['num_groups'], help='Number of demographic groups (e.g., age) for fairness analysis.')

@@ -61,10 +61,10 @@ class Dataset(TorchDataset):
         """Returns the augmentation transformation pipeline."""
         # Define augmentations here. Using RandAugment as before.
         return transforms.Compose([
-            transforms.RandomResizedCrop(size=224, scale=(0.8, 1.0)),
+            transforms.RandomResizedCrop(size=518, scale=(0.8, 1.0)),
             # transforms.RandomHorizontalFlip(p=0.5),
             # transforms.RandomAffine(degrees=5, translate=(0.1, 0.1))
-            # transforms.RandAugment(num_ops=3)
+            # transforms.RandomApply([transforms.RandAugment(num_ops=4, magnitude=9)], p=0.5)
         ])
 
     def _get_transforms(self) -> transforms.Compose:
