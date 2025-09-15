@@ -21,6 +21,7 @@ else:
 TRAIN_SPLIT = 0.6
 VAL_SPLIT = 0.2
 TEST_SPLIT = 0.2
+IMAGESIZE = 224
 
 class Dataset(TorchDataset):
     """Base dataset for loading and processing data for machine learning tasks."""
@@ -61,7 +62,7 @@ class Dataset(TorchDataset):
         """Returns the augmentation transformation pipeline."""
         # Define augmentations here. Using RandAugment as before.
         return transforms.Compose([
-            transforms.RandomResizedCrop(size=518, scale=(0.8, 1.0)),
+            transforms.RandomResizedCrop(size=IMAGESIZE, scale=(0.8, 1.0)),
             # transforms.RandomHorizontalFlip(p=0.5),
             # transforms.RandomAffine(degrees=5, translate=(0.1, 0.1))
             # transforms.RandomApply([transforms.RandAugment(num_ops=4, magnitude=9)], p=0.5)
@@ -75,7 +76,7 @@ class Dataset(TorchDataset):
         model_transform_to_add = self.model_transform
         if not model_transform_to_add:
             model_transform_to_add = transforms.Compose([
-                transforms.Resize((224, 224)),
+                transforms.Resize((IMAGESIZE, IMAGESIZE)),
                 transforms.ToImage(),
                 transforms.ToDtype(torch.float32, scale=True),
                 transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
@@ -104,20 +105,23 @@ class Dataset(TorchDataset):
         """Configures the dataset by creating age and gender groups, and preparing labels based on the task."""
         if self.age_column:
             self.labels = self.labels.dropna(subset=[self.age_column])
-            self.labels = self.labels[self.labels[self.age_column] != 0]
-            self.labels['age_group'] = self._create_age_groups(self.labels[self.age_column])
+            if self.labels[self.age_column].unique().shape[0] > self.num_groups:
+                self.labels = self.labels[self.labels[self.age_column] != 0]
+                self.labels['age_group'] = self._create_age_groups(self.labels[self.age_column])
+            else:
+                self.labels['age_group'] = self.labels[self.age_column]
         else:
-            self.labels['age_group'] = np.nan
+            self.labels['age_group'] = -1
         
         if self.gender_column:
             self.labels = self.labels.dropna(subset=[self.gender_column])
             self.labels['gender_group'] = self._convert_gender_to_binary(self.labels[self.gender_column])
             self.labels = self.labels[self.labels['gender_group'].isin([0, 1])]
         else:
-            self.labels['gender_group'] = np.nan
+            self.labels['gender_group'] = -1
         
         if 'group' not in self.labels.columns:
-            self.labels['group'] = np.nan
+            self.labels['group'] = -1
 
         if self.task:
             self.labels[self.task] = self.labels[self.task].fillna(0)

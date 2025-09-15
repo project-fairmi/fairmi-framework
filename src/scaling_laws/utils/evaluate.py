@@ -10,6 +10,7 @@ from src.scaling_laws.utils.metric import MetricAnalyzer
 from src.datamodule.dataset.vision import OdirModule, BrsetModule
 from src.datamodule.dataset.chest import CheXpertModule
 from src.datamodule.dataset.skin import Ham10000Module
+from src.datamodule.dataset.natural import CelebAModule
 
 import lightning as pl
 import os
@@ -84,6 +85,7 @@ class TestModelExperiment:
             "odir": OdirModule,
             "chexpert": CheXpertModule,
             "ham10000": Ham10000Module,
+            "celeba": CelebAModule,
         }
 
         # Get dataset configuration from config

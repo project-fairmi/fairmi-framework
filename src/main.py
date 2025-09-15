@@ -15,6 +15,7 @@ from lightning.pytorch.tuner.tuning import Tuner
 from src.datamodule.dataset.vision import OdirModule, BrsetModule
 from src.datamodule.dataset.chest import CheXpertModule
 from src.datamodule.dataset.skin import Ham10000Module
+from src.datamodule.dataset.natural import CelebAModule
 from src.model.classification import VisionTransformerModel
 from src.config import config
 
@@ -24,6 +25,7 @@ DATASET_MODULES = {
     "odir": OdirModule,
     "chexpert": CheXpertModule,
     "ham10000": Ham10000Module,
+    "celeba": CelebAModule
 }
 
 def main(args: argparse.Namespace):
