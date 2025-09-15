@@ -1,8 +1,10 @@
+from typing import Dict
 import pandas as pd
 from ..base import Dataset, DataModule
 from sklearn.model_selection import train_test_split
-import numpy as np
 from ..base import TRAIN_SPLIT, VAL_SPLIT, RANDOM_SEED
+from PIL import Image
+import torch
 
 class CelebA(Dataset):
     """CelebA dataset.
@@ -97,7 +99,7 @@ class CelebA(Dataset):
         # Split train_val_data into training and validation
         test_data, val_data = train_test_split(
             test_data,
-            test_size=0.1, # VAL_SPLIT / (TRAIN_SPLIT + VAL_SPLIT), # Adjust test_size for the remaining split
+            test_size=0.05, # VAL_SPLIT / (TRAIN_SPLIT + VAL_SPLIT), # Adjust test_size for the remaining split
             random_state=RANDOM_SEED,
             stratify=test_data['labels']
         )
@@ -120,6 +122,30 @@ class CelebA(Dataset):
         else:
             raise ValueError(f'Invalid type: {self.type} (must be train, val or test/eval)')
 
+    def __getitem__(self, idx: int) -> Dict:
+        """Returns a single item from the dataset at the given index."""
+        image_path = self.labels[self.path_column].iloc[idx]
+        image = Image.open(image_path).convert("RGB")
+
+        image = self.transforms(image)
+
+        label = torch.tensor(self.labels.loc[idx, 'labels'], dtype=torch.long)
+        gender = torch.tensor(self.labels.loc[idx, 'gender_group'], dtype=torch.long)
+        age = torch.tensor(self.labels.loc[idx, 'age_group'], dtype=torch.long)
+        group = {
+            'Black_Hair': torch.tensor(self.labels.loc[idx, 'Black_Hair'], dtype=torch.long),
+            'Eyeglasses': torch.tensor(self.labels.loc[idx, 'Eyeglasses'], dtype=torch.long),
+            'Mustache': torch.tensor(self.labels.loc[idx, 'Mustache'], dtype=torch.long),
+            'Big_Nose': torch.tensor(self.labels.loc[idx, 'Big_Nose'], dtype=torch.long),
+        }
+        
+        return {
+            'image': image,
+            'label': label,
+            'gender': gender,
+            'age': age,
+            'group': group
+        }
 
 def CelebAModule(batch_size: int = 32,
                    num_workers: int = 4,

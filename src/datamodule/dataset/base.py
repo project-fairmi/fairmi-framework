@@ -121,7 +121,7 @@ class Dataset(TorchDataset):
             self.labels['gender_group'] = -1
         
         if 'group' not in self.labels.columns:
-            self.labels['group'] = -1
+            self.labels['group'] = None
 
         if self.task:
             self.labels[self.task] = self.labels[self.task].fillna(0)

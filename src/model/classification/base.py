@@ -127,6 +127,8 @@ class ClassificationModel(LightningModule):
 
         self.compute_metrics(y_hat, batch.get('label'), 'test')
         self.compute_demographic_metrics(y_hat, batch, 'test')
+        if batch.get('group'):
+            self.compute_group_metrics(y_hat, batch, 'test')
         
         return loss
 
@@ -208,3 +210,13 @@ class ClassificationModel(LightningModule):
         """
         self._compute_metrics_for_group(y_hat, batch.get('label'), batch.get('gender'), 'gender', mode)
         self._compute_metrics_for_group(y_hat, batch.get('label'), batch.get('age'), 'age', mode)
+
+    def compute_group_metrics(self, y_hat, batch, mode):
+        """Computes the demographic metrics for the model.
+
+        Args:
+            y (torch.Tensor): The true values.
+            mode (str): The mode of operation ('train', 'val', 'test').
+        """
+        for group_name, group in batch.get('group').items():
+            self._compute_metrics_for_group(y_hat, batch.get('label'), group, group_name, mode) 
