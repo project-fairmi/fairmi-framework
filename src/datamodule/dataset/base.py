@@ -110,6 +110,8 @@ class Dataset(TorchDataset):
                 self.labels['age_group'] = self._create_age_groups(self.labels[self.age_column])
             else:
                 self.labels['age_group'] = self.labels[self.age_column]
+            # Ensure no NaN values remain in 'age_group' after creation
+            self.labels = self.labels.dropna(subset=['age_group'])
         else:
             self.labels['age_group'] = -1
         
@@ -117,6 +119,8 @@ class Dataset(TorchDataset):
             self.labels = self.labels.dropna(subset=[self.gender_column])
             self.labels['gender_group'] = self._convert_gender_to_binary(self.labels[self.gender_column])
             self.labels = self.labels[self.labels['gender_group'].isin([0, 1])]
+            # Ensure no NaN values remain in 'gender_group' after creation
+            self.labels = self.labels.dropna(subset=['gender_group'])
         else:
             self.labels['gender_group'] = -1
         
@@ -222,14 +226,12 @@ class Dataset(TorchDataset):
         label = torch.tensor(self.labels.loc[idx, 'labels'], dtype=torch.long)
         gender = torch.tensor(self.labels.loc[idx, 'gender_group'], dtype=torch.long)
         age = torch.tensor(self.labels.loc[idx, 'age_group'], dtype=torch.long)
-        group = self.labels.loc[idx, 'group']
         
         return {
             'image': image,
             'label': label,
             'gender': gender,
             'age': age,
-            'group': group
         }
 
 class DataModule(pl.LightningDataModule):

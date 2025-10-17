@@ -1,12 +1,13 @@
 # Project
 slurm
 config.yml
-src/test*
+src/*test*
 .cache
 output
 experiment
 lightning_logs
 *.vscode*
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
