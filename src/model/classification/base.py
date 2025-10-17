@@ -144,7 +144,7 @@ class ClassificationModel(LightningModule):
             torch.Tensor: The computed loss.
         """
         if self.loss == 'fair':
-            loss = self.criterion(y_hat, batch.get('label'), batch.get('age'))
+            loss = self.criterion(y_hat, batch.get('label'), batch['group'].get('Eyeglasses'))
         else:
             loss = self.criterion(y_hat, batch.get('label'))
 

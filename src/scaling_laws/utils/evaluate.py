@@ -100,7 +100,7 @@ class TestModelExperiment:
         datamodule = datamodule_class(
             data_dir=dataset_config['data_path'],
             image_data_dir=dataset_config['image_data_path'],
-            batch_size=128,  # Default batch size, can be adjusted
+            batch_size=config['training']['batch_size'],  # Default batch size, can be adjusted
             model_transform=None,  # No model transform available here
             augment_train=False,  # No augmentation by default
             fraction=1.0,  # Use full dataset by default
@@ -126,7 +126,7 @@ class TestModelExperiment:
         Args:
             model (pl.LightningModule): The model to test.
         """
-        trainer = pl.Trainer(devices=1)
+        trainer = pl.Trainer()
         return trainer.test(model, datamodule=self.datamodule)
 
     def run_tests(self):
@@ -169,5 +169,3 @@ if __name__ == '__main__':    # Set up argument parser
     # Create and run the experiment
     experiment = TestModelExperiment(args.experiments, dataset=args.dataset, name=args.name)
     experiment.run_tests()
-    metric_calculator = MetricAnalyzer(experiment.results_df, experiment.model_num_groups, experiment.path)
-    metric_calculator.generate_all_plots()
