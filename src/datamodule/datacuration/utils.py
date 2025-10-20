@@ -103,3 +103,25 @@ def setup_logging(
     logger.propagate = False
     logger.addHandler(handler)
     return
+
+
+def group_number(clusters):
+    """Given the cluster assignment, return the group number for each data point."""
+    if not clusters:
+        return np.array([])
+    
+    current_data_assignments = clusters[0]['assignment']
+    n = current_data_assignments.shape[0]
+
+    # Iterate through subsequent clustering levels
+    for level in range(1, len(clusters)):
+        next_level_cluster_assignments = clusters[level]['assignment']
+        new_data_assignments = np.zeros(n, dtype=int)
+
+        for i in range(n):
+            prev_cluster_id = current_data_assignments[i]
+            new_cluster_id = next_level_cluster_assignments[prev_cluster_id]
+            new_data_assignments[i] = new_cluster_id
+        current_data_assignments = new_data_assignments
+
+    return current_data_assignments

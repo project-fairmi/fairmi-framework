@@ -4,3 +4,5 @@ from .hierarchical_kmeans_gpu import (
     hierarchical_kmeans_with_resampling,
 )
 from .hierarchical_sampling import hierarchical_sampling
+
+from .utils import group_number
