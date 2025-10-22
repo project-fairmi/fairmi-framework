@@ -6,25 +6,25 @@ from src.model.extractor.embeddings import EmbeddingsExtractorModule
 from src.datamodule.dataset.chest import CheXpertModule
 from src.datamodule.dataset.natural import CelebAModule
 from src.datamodule.dataset.skin import Ham10000Module
-from src.config import config
+from src.projects.group_similarity import config
 
 DATASET_MODULES = {
     "chexpert": CheXpertModule,
-    # "ham10000": Ham10000Module,
-    # "celeba": CelebAModule
+    "ham10000": Ham10000Module,
+    "celeba": CelebAModule
 }
 
 def load_embeddings(path):
     return torch.load(path)
 
-def save_embeddings(path, embeddings, gender, age):
-    torch.save({'embeddings': embeddings, 'gender': gender, 'age': age}, path)
+def save_embeddings(path, data):
+    torch.save(data, path)
 
-def save_umap(path, umap_embeddings, gender, age):
-    torch.save({'umap_embeddings': umap_embeddings, 'gender': gender, 'age': age}, path)
+def save_umap(path, data):
+    torch.save(data, path)
 
-def save_tsne(path, tsne_embeddings, gender, age):
-    torch.save({'tsne_embeddings': tsne_embeddings, 'gender': gender, 'age': age}, path)
+def save_tsne(path, data):
+    torch.save(data, path)
 
 def compute_umap(embeddings):
     reducer = umap.UMAP(n_components=2, random_state=42)
@@ -37,13 +37,24 @@ def compute_tsne(embeddings):
     return torch.tensor(tsne_emb)
 
 def extract_embeddings(extractor, datamodule):
-    embeddings, gender, age = [], [], []
+    all_data = {}
     for batch in datamodule.test_dataloader():
         with torch.no_grad():
-            embeddings.append(extractor(batch).cpu())
-            gender.append(batch['gender'].cpu())
-            age.append(batch['age'].cpu())
-    return torch.cat(embeddings), torch.cat(gender), torch.cat(age)
+            extracted_embeddings = extractor(batch).cpu()
+            all_data['embeddings'].append(extracted_embeddings)
+
+            for key, value in batch.items():
+                if key == 'image':
+                    continue
+                if key == 'group':
+                    for group_key, group_value in value.items():
+                        all_data[group_key].append(group_value.cpu())
+                    continue    
+                all_data[key].append(value.cpu())
+
+    for key in all_data:
+        all_data[key] = torch.cat(all_data[key])
+    return all_data
 
 def process_dataset(dataset_name, extractor):
     output_dir = f"output/embeddings/{dataset_name}"
@@ -59,8 +70,8 @@ def process_dataset(dataset_name, extractor):
             print(f"Skipping {dataset_name}: embeddings, UMAP and t-SNE found.")
             return
         print(f"Loading embeddings for {dataset_name}, computing missing embeddings...")
-        data = load_embeddings(embeddings_path)
-        embeddings, gender, age = data['embeddings'], data['gender'], data['age']
+        all_extracted_data = load_embeddings(embeddings_path)
+        embeddings = all_extracted_data['embeddings']
     else:
         print(f"Extracting embeddings for {dataset_name}...")
         datamodule_class = DATASET_MODULES[dataset_name]
@@ -73,21 +84,22 @@ def process_dataset(dataset_name, extractor):
             fraction=config['training']['fraction'],
             num_workers=config['data'][dataset_name]['num_workers'],
             task=config['data'][dataset_name]['task'],
-            num_groups=3
+            num_groups=config['data'][dataset_name]['num_groups']
         )
         datamodule.setup(stage='test')
-        embeddings, gender, age = extract_embeddings(extractor, datamodule)
-        save_embeddings(embeddings_path, embeddings, gender, age)
+        all_extracted_data = extract_embeddings(extractor, datamodule)
+        save_embeddings(embeddings_path, all_extracted_data)
+        embeddings = all_extracted_data['embeddings']
 
     if not os.path.exists(umap_path):
         umap_embeddings = compute_umap(embeddings)
-        save_umap(umap_path, umap_embeddings, gender, age)
+        save_umap(umap_path, {'umap_embeddings': umap_embeddings, **{k: v for k, v in all_extracted_data.items() if k != 'embeddings'}})
     else:
         print(f"UMAP embeddings already exist for {dataset_name}.")
 
     if not os.path.exists(tsne_path):
         tsne_embeddings = compute_tsne(embeddings)
-        save_tsne(tsne_path, tsne_embeddings, gender, age)
+        save_tsne(tsne_path, {'tsne_embeddings': tsne_embeddings, **{k: v for k, v in all_extracted_data.items() if k != 'embeddings'}})
     else:
         print(f"t-SNE embeddings already exist for {dataset_name}.")
 

@@ -29,7 +29,7 @@ class Dataset(TorchDataset):
     def __init__(self, data_dir: str, image_data_dir: str, labels_file: Union[str, List[str]], type: str, model_transform: transforms.Compose,
                  image_column: Optional[str] = None, augment: bool = False, fraction: float = 1, age_column: Optional[str] = None,
                  gender_column: Optional[str] = None, num_groups: int = 4, task: Optional[str] = None,
-                 patient_id_column: Optional[str] = None, path_column: Optional[str] = None):
+                 patient_id_column: Optional[str] = None, path_column: Optional[str] = None, cluster_file: Optional[str] = None,):
         """Initializes the dataset."""
         random.seed(RANDOM_SEED)
         self.image_data_dir = image_data_dir
@@ -45,9 +45,16 @@ class Dataset(TorchDataset):
         self.patient_id_column = patient_id_column
         self.image_column = image_column
         self.path_column = path_column
+        self.clusters = None
 
         self.labels = self._set_labels(labels_file)
         self.transforms = self._get_transforms()
+
+        if cluster_file and self.type == 'test':
+            self._load_clusters(cluster_file)
+
+    def _load_clusters(self, cluster_file: str):
+        self.clusters = torch.load(cluster_file)
 
     def _set_labels(self, labels_file: str) -> pd.DataFrame:
         """Sets the labels for the dataset."""
@@ -220,19 +227,23 @@ class Dataset(TorchDataset):
         """Returns a single item from the dataset at the given index."""
         image_path = self.labels[self.path_column].iloc[idx]
         image = Image.open(image_path).convert("RGB")
-
         image = self.transforms(image)
 
-        label = torch.tensor(self.labels.loc[idx, 'labels'], dtype=torch.long)
-        gender = torch.tensor(self.labels.loc[idx, 'gender_group'], dtype=torch.long)
-        age = torch.tensor(self.labels.loc[idx, 'age_group'], dtype=torch.long)
-        
-        return {
+        data = {
             'image': image,
-            'label': label,
-            'gender': gender,
-            'age': age,
+            'label': torch.tensor(self.labels.loc[idx, 'labels'], dtype=torch.long),
+            'gender': torch.tensor(self.labels.loc[idx, 'gender_group'], dtype=torch.long),
+            'age': torch.tensor(self.labels.loc[idx, 'age_group'], dtype=torch.long),
         }
+        
+        if self.clusters: # Check if clusters attribute exists and is not empty
+            cluster_data = {
+                key: torch.tensor(self.clusters[key][idx], dtype=torch.long)
+                for key in self.clusters.keys()
+            }
+            data['cluster'] = cluster_data
+        
+        return data
 
 class DataModule(pl.LightningDataModule):
     """Data module for handling dataset operations in a PyTorch Lightning pipeline."""
