@@ -9,8 +9,8 @@ import pandas as pd
 import re
 import numpy as np
 from PIL import Image
+from transformers import BaseImageProcessor
 from sklearn.model_selection import train_test_split
-from torch.utils.data import WeightedRandomSampler
 from src.config import config
 
 if config['data']['random_seed'] is not None:
@@ -48,7 +48,10 @@ class Dataset(TorchDataset):
         self.clusters = None
 
         self.labels = self._set_labels(labels_file)
-        self.transforms = self._get_transforms()
+        if isinstance(model_transform, BaseImageProcessor):
+            self.transforms = lambda image: model_transform(image, return_tensors="pt")['pixel_values'].squeeze(0)
+        else:
+            self.transforms = self._get_transforms()
 
         if cluster_file and self.type == 'test':
             self._load_clusters(cluster_file)

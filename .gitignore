@@ -7,7 +7,7 @@ output
 experiment
 lightning_logs
 *.vscode*
-
+src/projects/group_similarity/test.ipynb
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

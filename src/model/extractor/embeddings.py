@@ -3,16 +3,26 @@ from timm.data import resolve_data_config
 from timm.data.transforms_factory import create_transform
 import timm
 from safetensors.torch import load_file
+from transformers import AutoModel, AutoImageProcessor
+from open_clip import create_model_from_pretrained, get_tokenizer
 
 class EmbeddingsExtractorModule(LightningModule):
-    def __init__(self, model_id: str, pretrained: bool = False, weights_path: str = None):
+    def __init__(self, model_id: str, pretrained: bool = False, weights_path: str = None, type: bool = False):
         super().__init__()
         self.model_id = model_id
         self.pretrained = pretrained
         self.weights_path = weights_path
-        self.model = self.configure_model()
-        self.model.eval()
-        self.transforms = self.configure_model_transform()
+        self.type = type
+        if type == 'timm':
+            self.model = self.configure_model()
+            self.model.eval()
+            self.transforms = self.configure_model_transform()
+        elif type == 'clip':
+            self.model, self.transforms = create_model_from_pretrained(model_id, cache_dir=weights_path)
+            self.tokenizer = get_tokenizer(model_id, cache_dir=weights_path)
+        elif type == 'huggingface':
+            self.model = AutoModel.from_pretrained(model_id, cache_dir=weights_path)
+            self.transforms = AutoImageProcessor.from_pretrained(model_id, cache_dir=weights_path)
 
     def configure_model_transform(self):
         """Configures the dataloader for the model.
@@ -53,5 +63,9 @@ class EmbeddingsExtractorModule(LightningModule):
         return model
 
     def forward(self, x):
-        image = self.transforms(x['image'])
-        return self.model(image)
+        if self.type == 'timm':
+            return self.model(x['image'])
+        elif self.type == 'clip':
+            return self.model.encode_image(x['image'])
+        else:
+            return self.model(x['image'])[1]
