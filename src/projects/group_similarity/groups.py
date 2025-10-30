@@ -28,6 +28,8 @@ class CreateGroups:
             self.embeddings = self.embeddings['tsne_embeddings']
         elif 'umap' in self.name:
             self.embeddings = self.embeddings['umap_embeddings']
+        else:
+            self.embeddings = self.embeddings['embeddings']
 
         if isinstance(n_groups, int):
             self.n_groups = [n_groups]
