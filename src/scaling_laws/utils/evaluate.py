@@ -55,7 +55,7 @@ class TestModelExperiment:
             version_dir = self._version_dir(version)
             with open(os.path.join(version_dir, 'hparams.yaml')) as f:
                 hparams = yaml.load(f, Loader=IgnoreUnknownTagsLoader)
-            model_data_percentage[version] = hparams[information]
+            model_data_percentage[version] = hparams.get(information)
 
         return model_data_percentage
 

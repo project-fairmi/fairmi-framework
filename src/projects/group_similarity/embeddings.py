@@ -1,13 +1,12 @@
 import os
 import torch
-import umap
-from torchdr import InfoTSNE
-from sklearn.manifold import TSNE
+# from torchdr import InfoTSNE
 from src.model.extractor.embeddings import EmbeddingsExtractorModule
 from src.datamodule.dataset.chest import CheXpertModule
 from src.datamodule.dataset.natural import CelebAModule
 from src.datamodule.dataset.skin import Ham10000Module
 from src.projects.group_similarity import config
+from sklearn.manifold import TSNE
 
 DATASET_MODULES = {
     "chexpert": CheXpertModule,
@@ -22,7 +21,7 @@ def save_embeddings(path, data):
     torch.save(data, path)
 
 def compute_infotsne(embeddings, n_components=2):
-    info_tsne = InfoTSNE(n_components=n_components, random_state=42, device='cuda')
+    info_tsne = TSNE(n_components=n_components, random_state=42)
     info_tsne_emb = info_tsne.fit_transform(embeddings)
     return torch.tensor(info_tsne_emb)
 

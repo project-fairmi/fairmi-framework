@@ -27,6 +27,7 @@ class ClassificationModel(LightningModule):
 
     def _init_demographic_metrics(self):
         self.gender_fairness = torchmetrics.classification.BinaryFairness(2)
+        self.generic_fairness = torchmetrics.classification.BinaryFairness(2)
         self.age_fairness = torchmetrics.classification.BinaryFairness(self.num_age_groups)
 
     def _init_metrics(self):
@@ -40,6 +41,7 @@ class ClassificationModel(LightningModule):
             self.recall = torchmetrics.classification.BinaryRecall()
             self.auroc = torchmetrics.classification.BinaryAUROC()
             self.f1 = torchmetrics.classification.BinaryF1Score()
+
             
         elif self.num_classes > 1:
             self.accuracy = torchmetrics.classification.Accuracy(task="multiclass", num_classes=self.num_classes)
@@ -198,8 +200,22 @@ class ClassificationModel(LightningModule):
         else:
             ratio = 0
 
-        # Log the min/max AUROC ratio
+        # Convert y_hat to single-class labels for fairness metrics
+        y_hat_single_class = y_hat.argmax(dim=1)
+
+        if group_name == 'age':
+            fairness = self.age_fairness(y_hat_single_class, y, group)
+        elif group_name == 'gender':
+            fairness = self.gender_fairness(y_hat_single_class, y, group)
+        else:
+            fairness = self.generic_fairness(y_hat_single_class, y, group)
+
+        for metric_name, metric_value in fairness.items():
+            func = lambda x: 'EO' if 'EO' in x else ('DP' if 'DP' in x else None)
+            self.log(f'{mode}_{group_name}_fairness_{func(metric_name)}', metric_value, on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
+            
         self.log(f'{mode}_{group_name}_min_max_auroc_ratio', ratio, on_epoch=True, prog_bar=True, logger=True, sync_dist=self.sync_dist)
+
 
     def compute_demographic_metrics(self, y_hat, batch, mode):
         """Computes the demographic metrics for the model.
@@ -219,4 +235,4 @@ class ClassificationModel(LightningModule):
             mode (str): The mode of operation ('train', 'val', 'test').
         """
         for group_name, group in batch.get('group').items():
-            self._compute_metrics_for_group(y_hat, batch.get('label'), group, group_name, mode) 
+            self._compute_metrics_for_group(y_hat, batch.get('label'), group, group_name, mode)
